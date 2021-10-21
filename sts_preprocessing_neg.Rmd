@@ -43,7 +43,7 @@ RDATA_PATH <- paste0("data/RData/", filename, "/")
 if (!file.exists(RDATA_PATH)) dir.create(RDATA_PATH, recursive = TRUE)
 #' Define the path where we can find the mzML files:
 MZML_PATH <- "C:/Users/User/Documents/sts_mzML_neg"
-MZML_PATH <- "/data/massspec/mzML/2017/2017_08/"
+#MZML_PATH <- "/data/massspec/mzML/2017/2017_08/"
 if (!file.exists(MZML_PATH))
     stop("Can not find the directory with the mzML files: ", MZML_PATH)
 #' Where to cut the chromatogram (i.e. subset to spectra within rt 0-rt_cut)
