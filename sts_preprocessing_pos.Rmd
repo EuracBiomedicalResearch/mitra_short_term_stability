@@ -21,11 +21,11 @@ references:
 ```{r biocstyle, echo = FALSE, results = "asis" }
 library('knitr')
 library(BiocStyle)
-BiocStyle::markdown() 
+BiocStyle::markdown()
 knitr::opts_chunk$set(echo = TRUE, message = FALSE)
 ```
 
-**Modified**: `r file.info("vams_preprocessing.Rmd")$mtime`<br />
+**Modified**: `r file.info("sts_preprocessing_pos.Rmd")$mtime`<br />
 **Compiled**: `r date()`
 
 
@@ -47,12 +47,12 @@ RDATA_PATH <- paste0("data/RData/", filename, "/")
 if (!file.exists(RDATA_PATH)) dir.create(RDATA_PATH, recursive = TRUE)
 #' Define the path where we can find the mzML files:
 MZML_PATH <- "C:/Users/User/Documents/sts_mzML_pos"
-## MZML_PATH <- "/data/massspec/mzML/2018/"
+#MZML_PATH <- "/data/massspec/mzML/2017/2017_08/"
 if (!file.exists(MZML_PATH))
     stop("Can not find the directory with the mzML files: ", MZML_PATH)
 #' Where to cut the chromatogram (i.e. subset to spectra within rt 0-rt_cut)
 rt_cut <- 340
-#' Get the number of cpus allocated or fall back to 3 
+#' Get the number of cpus allocated or fall back to 3
 ncores <- as.integer(Sys.getenv("SLURM_JOB_CPUS_PER_NODE", 3))
 #' Whether or not to plot the EICs for all standards - takes loooong time
 plot_eics <- TRUE
@@ -61,21 +61,21 @@ plot_eics <- TRUE
 # Abstract
 
 In this document we perform the analysis on short term stability data collected
-with mitra tips, using the `MSnbase` package for MS data import and handling 
+with mitra tips, using the `MSnbase` package for MS data import and handling
 and the `xcms` package to perform quality assessment, peak detection, alignment
 and correspondence on said data.
 The following code allows preprocessing of data registered in positive ion mode.
 
 
 # Introduction
- 
+
 In this section we perform the pre-processing of the untargeted metabolomics
 data on short term stability data collected with mitra tips which comprises an
-initial quality assessment, chromatographic peak detection, alignment 
-(retention time correction) and correspondence (chromatographic peak grouping 
+initial quality assessment, chromatographic peak detection, alignment
+(retention time correction) and correspondence (chromatographic peak grouping
 across samples).
 
-In the project the impact of different storage conditions on metabolite 
+In the project the impact of different storage conditions on metabolite
 concentrations is investigated.
 
 The input files represent centroided data, with centroiding performed using the
@@ -95,7 +95,7 @@ We first focus on the data in positive polarity.
 
 Below we load all required libraries for the analysis as well as the *phenodata*
 file defining the experiment's layout and we define some general settings, such
-as `da`, which describes the tolerance for the m/z ratio, and `RTd`, which 
+as `da`, which describes the tolerance for the m/z ratio, and `RTd`, which
 describes the tolerance for the retention
 time; both these parameters will be used later in the analysis. Also, we set up
 the parallel processing,
@@ -105,14 +105,11 @@ experiment and finally read the raw data.
 ```{r pos-libraries-data, message = FALSE}
 library(xcms)
 library(RColorBrewer)
-library(devtools)
 library(pander)
 library(pheatmap)
 library(MsCoreUtils)
 library(Rdisop)
 library(CompMetaboTools)
-library(doParallel)
-library(magrittr)
 library(readxl)
 library(MsCoreUtils)
 ## Define some general settings
@@ -124,26 +121,27 @@ if (.Platform$OS.type == "unix") {
 } else {
     register(bpstart(SnowParam(ncores)))
 }
-pd <- read.table("data/mitra-short-term-files.txt", sep = "\t", as.is = TRUE, header = TRUE)
+pd <- read.table("data/mitra-short-term-files.txt",
+                 sep = "\t", as.is = TRUE, header = TRUE)
 pd_pos <- pd[pd$polarity == "POS", ]
 #' Define colors for the groups.
 col_storage <- brewer.pal(6, name = "Set1")
 names(col_storage) <- c("4C_BAG",   # red
-                       "RT",        # blue
-                       "BAG",       # green
-                       "VACUUM",    # purple
-                       "4C_VACUUM", # orange
-                       "QC")        # yellow 
+                        "RT",        # blue
+                        "BAG",       # green
+                        "VACUUM",    # purple
+                        "4C_VACUUM", # orange
+                        "QC")        # yellow
 col_time <- brewer.pal(8, name = "Set3")
 names(col_time) <- c("1d",
-                      "1w",
-                      "2d",
-                      "2h",
-                      "3d",
-                      "6h",
-                      "2w",
-                      "QC")        
-                      
+                     "1w",
+                     "2d",
+                     "2h",
+                     "3d",
+                     "6h",
+                     "2w",
+                     "QC")
+
 ```
 
 ```{r pos-data_pos, message = FALSE, eval = !file.exists(paste0(RDATA_PATH, "data_pos_read_raws.RData"))}
@@ -175,12 +173,14 @@ pandoc.table(tab, style = "rmarkdown",
 
 In this project mitra tips, that were used to collect blood samples, were
 stored unter the following 5 conditions:
-RT = at room temperature
-BAG = in a plastic bag that contains dessicants
-4C_BAG = in a plastic bag that contains dessicants, stored at 4°C
-VACUUM = in a vacuum bag
-4C_VACUUM = in a vacuum bag, stored at 4°C
-The second factor in the data set is time, which describes for how long the 
+
+- RT = at room temperature
+- BAG = in a plastic bag that contains dessicants
+- 4C_BAG = in a plastic bag that contains dessicants, stored at 4°C
+- VACUUM = in a vacuum bag
+- 4C_VACUUM = in a vacuum bag, stored at 4°C
+
+The second factor in the data set is time, which describes for how long the
 mitra tips were stored starting with 2 hours up to 2 weeks.
 
 Next we perform an initial quality assessment by comparing the distribution of
@@ -204,8 +204,6 @@ window.
 
 ```{r pos-calc-tic, message = FALSE, eval = !file.exists(paste0(RDATA_PATH, "chrs_bpc_raw.RData"))}
 #chrs_tic <- chromatogram(data_pos, aggregationFun = "sum")
-gc()
-register(SerialParam())
 chrs_bpc <- chromatogram(data_pos, aggregationFun = "max")
 save(chrs_bpc, file = paste0(RDATA_PATH, "chrs_bpc_raw.RData"))
 ```
@@ -224,12 +222,12 @@ legend("topright", col = col_storage, legend = names(col_storage), lwd = 2)
 The base peak chromatograms are quite different between the different sample
 storage methods. Mitra tips that were stored in plastic bags at room temperature
 show a higher signal in the retention time range from 30 to 100 seconds. In the
-retention time range from 110 to 130 the signals are not perfectly aligned, 
+retention time range from 110 to 130 the signals are not perfectly aligned,
 some samples show a higher intensity then others and we observe some variation
 in retention time. For most other parts the BPC shows similar signal suggesting
-that similar compounds are detected. 
+that similar compounds are detected.
 
-We next cluster samples based on pair-wise correlations of their (log2) base 
+We next cluster samples based on pair-wise correlations of their (log2) base
 peak intensities.
 
 ## Heatmap
@@ -261,8 +259,8 @@ res <- pheatmap(cormat, annotation_col = ann,
                 annotation_color = list(storage = col_storage))
 ```
 
-The base peak chromatograms does not cluster by storage method, only the 
-quality control (QC) samples are clustered together. On the other hand a 
+The base peak chromatograms does not cluster by storage method, only the
+quality control (QC) samples are clustered together. On the other hand a
 clustering effect due to the storage duration can be observed, the samples
 that were stored for a longer period of time (1-2 weeks) are clustered mainly
 together and also the samples that were stored for only a couple of hours
@@ -303,7 +301,7 @@ plot(bpcs_rla, xlab = "", ylab = "average RLA", xlim = xl,
 grid(nx = NULL)
 ```
 
-Overall seen, the signal is comparable between the samples. 
+Overall seen, the signal is comparable between the samples.
 
 
 ## Principal component analysis
@@ -321,22 +319,22 @@ pc <- prcomp(t(log2(do.call(cbind, lapply(chrs_bin, intensity)))),
 par(mfrow = c(2, 2))
 plot_pca(pc, col = col_storage[as.character(data_pos$storage)],
          pc_x = 1, pc_y = 2, labels = data_pos$inj_idx)
-legend("topleft", col = col_storage, legend = names(col_storage), lwd = 2, 
+legend("topleft", col = col_storage, legend = names(col_storage), lwd = 2,
        cex=0.4)
 plot_pca(pc, col = col_storage[as.character(data_pos$storage)],
          pc_x = 3, pc_y = 4, labels = data_pos$inj_idx)
-legend("topleft", col = col_storage, legend = names(col_storage), lwd = 2, 
+legend("topleft", col = col_storage, legend = names(col_storage), lwd = 2,
        cex=0.4)
 plot_pca(pc, col = col_storage[as.character(data_pos$storage)],
          pc_x = 2, pc_y = 3, labels = data_pos$inj_idx)
-legend("topleft", col = col_storage, legend = names(col_storage), lwd = 2, 
+legend("topleft", col = col_storage, legend = names(col_storage), lwd = 2,
        cex=0.4)
 ```
 
 Looking at the PC1 plot, we see that all QC samples are clustered together,
 whereas it is hard to differentiate between the different storage methods.
 
-We then redo the PCA analysis but colour the samples according to storage 
+We then redo the PCA analysis but colour the samples according to storage
 duration (time):
 
 ```{r pos-bpc-pca-injection-idx-time, fig.path = IMAGE_PATH, fig.width = 10, fig.height = 10, fig.cap = "PCA of the base peak signal. Numbers indicate the injection index."}
@@ -345,20 +343,20 @@ pc <- prcomp(t(log2(do.call(cbind, lapply(chrs_bin, intensity)))),
 par(mfrow = c(2, 2))
 plot_pca(pc, col = col_time[as.character(data_pos$time)],
          pc_x = 1, pc_y = 2, labels = data_pos$inj_idx)
-legend("topleft", col = col_time, legend = names(col_time), lwd = 2, 
+legend("topleft", col = col_time, legend = names(col_time), lwd = 2,
        cex=0.4)
 plot_pca(pc, col = col_time[as.character(data_pos$time)],
          pc_x = 3, pc_y = 4, labels = data_pos$inj_idx)
-legend("topleft", col = col_time, legend = names(col_time), lwd = 2, 
+legend("topleft", col = col_time, legend = names(col_time), lwd = 2,
        cex=0.4)
 plot_pca(pc, col = col_time[as.character(data_pos$time)],
          pc_x = 2, pc_y = 3, labels = data_pos$inj_idx)
-legend("topleft", col = col_time, legend = names(col_time), lwd = 2, 
+legend("topleft", col = col_time, legend = names(col_time), lwd = 2,
        cex=0.4)
 ```
 
 In this plot, we see that the QC are clustered together, but also the samples
-that were stored for 6h are in one cluster in PC1. Samples that were stored for 
+that were stored for 6h are in one cluster in PC1. Samples that were stored for
 2 days are also mainly clustered together, the same can be observed for samples
 stored for 2 weeks.
 
@@ -511,7 +509,7 @@ theoretical retention time.
 #' chromatographic peaks
 std_info_mz_rt <- chromPeakArea(data_pos, mz = std_info$mz_ion,
                                 rt = std_info$RT, diffRt = 30,
-                                ppm = 50)
+                                ppm = 10)
 std_info <- std_info[!is.na(std_info_mz_rt[, "mzmin"]), ]
 std_info_mz_rt <- std_info_mz_rt[!is.na(std_info_mz_rt[, "mzmin"]), ]
 #' Extract the ion chromatogram for each standard
@@ -569,7 +567,7 @@ write.table(std_info, file = "data/std_info_2.txt", row.names = FALSE, sep = "\t
 
 The observations made for each compound are written in the
 *std_info_pos.txt* file, which is then loaded and it is used to continue
-the study. 
+the study.
 
 Next, we want to import the collected data and we extract the chromatograms
 where the peak from the standards and the experimental data overlap in the
@@ -808,7 +806,7 @@ smpl_summary <- cbind(peak_count = vapply(pk_list, nrow, numeric(1)),
 tab <- aggregate(smpl_summary, by = list(storage = data_pos$storage), quantile)
 rownames(tab) <- tab[, 1]
 tab <- tab[, -1]
-pandoc.table(t(tab), style = "rmarkdown", 
+pandoc.table(t(tab), style = "rmarkdown",
              cap = paste("Summary of peak detection results. Shown are the",
                          "per-source quantiles of the numbers of identified",
                          "peaks, of the median m/z (in ppm) and rt widths",
@@ -841,7 +839,7 @@ in most samples. We thus first group chromatographic peaks requiring them to be
 present in 80% of the samples within each group and use these as the *hook*
 peaks. Most of the settings for the peak grouping can then be reused for the
 correspondence analysis in the next section. Note that before alignment we
-remove potentially problematic samples. 
+remove potentially problematic samples.
 
 First of all, we group peaks among samples, as we do for the correspondence
 step; we use a 0.01 `binSize` to extract all chromatographic peaks from
@@ -892,6 +890,7 @@ pdf(file = paste0(IMAGE_PATH, "glucose_0.8.pdf"), height = 7, width = 5)
 pdp_tmp <- PeakDensityParam(sampleGroups = data_pos$storage, bw = 1.3)
 plot_grouping(data_pos, mz = mzr, rt = rtr, param = pdp_tmp,
               col = col_storage[data_pos$storage])
+dev.off()
 ```
 
 With a smoothing bandwidth `bw = 1.3` we are able to separate the Fructose and
@@ -922,7 +921,7 @@ plot_grouping(data_pos, rt = rtr, mz = mzr, param = pdp_tmp,
 ```
 
 With a `bw = 2` peaks for 1-Methylhistidine and 3-Methylhistidine are not
-grouped into the same feature. 
+grouped into the same feature.
 
 We perform a subset alignment that is based on the alignment of the
 QC samples. While the QC samples might not be representative for all matrices,
@@ -973,7 +972,7 @@ plotAdjustedRtime(data_pos, col = paste0(col_storage[data_pos$storage], 80),
 
 At last we generate extracted ion chromatogram plots of the raw and adjusted
 data for the list of known compounds. These are visually inspected to evaluate
-the impact of the alignment. 
+the impact of the alignment.
 
 ```{r pos-alignment-kc-plots, echo = FALSE, warning = FALSE, message = FALSE, eval = plot_eics}
 #' For each standard, reduce to the peak with the highest intensity within
@@ -1140,7 +1139,7 @@ featureSummaryTable <- function(x, percentages = c(10, 25, 50, 90)) {
         cnt
     }))
 }
-pandoc.table(featureSummaryTable(feat_summ), style = "rmarkdown", 
+pandoc.table(featureSummaryTable(feat_summ), style = "rmarkdown",
              caption = paste("Summary of the correspondence analysis. Shown",
                              "are counts of features, counts of features with",
                              "at least one samples in which multiple peaks",
@@ -1151,70 +1150,7 @@ pandoc.table(featureSummaryTable(feat_summ), style = "rmarkdown",
 
 More than 60 % of the features are *single peak features*, i.e. have only a
 single chromatographic peak assigned per sample. The number of features present
-in more than 90 % of samples is low (about 0,0002 %). 
-
-Next we evaluate the integrated signal for features in QC samples. This is
-expected to be similar between QC samples. Differences can, besides batch
-effects or injection order dependent effects, also be caused by differences in
-the identified chromatographic peak boundaries. We thus extract below feature
-intensities and subset these to QC samples.
-
-```{r feature-vals-QC, message = FALSE}
-#' We extract the integrated original signal and use the signal from the peak
-#' with the larger signal for multi-peak features.
-fmat <- featureValues(data_pos, value = "into", method = "maxint")
-#' Subset to QC samples and remove features not present in 90% of the samples
-fmat_qc <- fmat[, data_pos$storage == "QC"]
-nsamp <- ncol(fmat_qc)
-fmat_qc <- fmat_qc[apply(fmat_qc, MARGIN = 1,
-                         function(z) (sum(!is.na(z)) / nsamp) >= 0.9), ]
-```
-
-Next we determine per-row differences that will be used to asses overall
-similarity between replicates. In log2 scale, we calculate the maximal
-difference (`M_range`) and, to avoid results being influenced by outliers,
-differences between abundances after removing the lower and upper 1% of signals
-(`diff_98`. These `M` values represent thus log fold change differences in
-abundances.
-
-```{r feature-vals-diff, message = FALSE}
-#' Calculat maximal differences...
-diff_fun <- function(z) {
-    c(M_range = diff(range(z, na.rm = TRUE)),
-      M_98 = unname(diff(quantile(z, probs = c(0.01, 0.99), na.rm = TRUE))),
-      M_90 = unname(diff(quantile(z, probs = c(0.05, 0.95), na.rm = TRUE))))
-}
-QC_diffs <- t(apply(log2(fmat_qc), MARGIN = 1, FUN = diff_fun))
-```
-
-The table below lists the quantiles of these differences.
-
-```{r feature-vals-diff-table, message = FALSE, echo = FALSE, results = "asis"}
-tab <- apply(QC_diffs, MARGIN = 2, quantile)
-pandoc.table(tab, style = "rmarkdown",
-             caption = paste("Overview of the abundance differences between",
-                             "QC samples. Shown are quantiles for the M_range",
-                             "(log2 difference between the most extreme values",
-                             "for a feature), M_98 (log2 difference after",
-                             "removing the top 1% and lowest 1% of values for",
-                             "a feature) and M_90 (log2 difference after",
-                             "removing the top and lowest 5% of values per",
-                             "feature). The analysis bases on", nrow(QC_diffs),
-                             "features."))
-```
-
-The plot below shows the distribution of log2 ratios in abundances and their
-dependency on average abundance.
-
-```{r feature-vals-diff-plot, echo = FALSE, fig.cap = "Distribution of log2 ratios in abundances between QC samples and their dependency on their average abundance.", fig.widht = 10, fig.height = 5, fig.path = IMAGE_PATH}
-par(mfrow = c(1, 2), mar = c(4, 4.5, 1, 1))
-boxplot(QC_diffs, ylab = expression(log[2]~abundance~ratio))
-grid(nx = NA, ny = NULL)
-plot(rowMeans(log2(fmat_qc), na.rm = TRUE), QC_diffs[, 1],
-     xlab = expression(log[2]~average~abundance),
-     ylab = expression(log[2]~abundance~ratio), pch = 16, col = "#00000060")
-grid()
-```
+in more than 90 % of samples is low (about 0,0002 %).
 
 ```{r save-data, echo = FALSE, results = "hide"}
 save(data_pos, file = paste0(RDATA_PATH, "data_pos.RData"))

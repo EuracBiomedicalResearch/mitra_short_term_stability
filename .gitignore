@@ -1,0 +1,8 @@
+local_data/*
+.Rproj.user
+*.RData
+*.RHistory
+*.png
+*.html
+*.pdf
+images/
