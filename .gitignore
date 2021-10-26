@@ -2,6 +2,7 @@ local_data/*
 .Rproj.user
 *.RData
 *.RHistory
+*.Rhistory
 *.png
 *.html
 *.pdf
