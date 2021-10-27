@@ -22,7 +22,7 @@ library(BiocStyle)
 BiocStyle::markdown()
 ```
 
-**Modified**: `r file.info("vams_normalization.Rmd")$mtime`<br />
+**Modified**: `r file.info("sts_normalization_pos.Rmd")$mtime`<br />
 **Compiled**: `r date()`
 
 ```{r settings, echo = FALSE, results = "hide", message = FALSE}
@@ -34,7 +34,6 @@ phi <- (1+sqrt(5))/2
 ## Define paths:
 filename <- "sts_normalization_pos"
 ## Path to save the images; remove all old images.
-## IMAGE_PATH <- paste0("C:/Users/User/Documents/Masterarbeit/R/images/", filename, "/")
 IMAGE_PATH <- paste0("images/", filename, "/")
 dir.create(IMAGE_PATH, recursive = TRUE, showWarnings = FALSE)
 ## Path to store RData files
@@ -42,18 +41,18 @@ RDATA_PATH <- paste0("data/RData/", filename, "/")
 if (!file.exists(RDATA_PATH)) dir.create(RDATA_PATH, recursive = TRUE)
 ## Define the path where we can find the mzML files:
 ## MZML_PATH <- "/data/massspec/mzML/"
-MZML_PATH <- "C:/Users/User/Documents/sts_mzML_pos"
-if (!file.exists(MZML_PATH))
-    stop("Can not find the directory with the mzML files: ", MZML_PATH)
-## Get the number of cpus allocated or fall back to 3 
+## MZML_PATH <- "C:/Users/User/Documents/sts_mzML_pos"
+## if (!file.exists(MZML_PATH))
+##     stop("Can not find the directory with the mzML files: ", MZML_PATH)
+## Get the number of cpus allocated or fall back to 3
 ncores <- as.integer(Sys.getenv("SLURM_JOB_CPUS_PER_NODE", 4)) - 1L
 ```
 
 # Abstract
 
 This document defines the normalization of the feature abundance  on short term
-stability data collected with mitra tips. This comprises a first quality 
-assessment, fill-in of missing values, between-sample normalization and 
+stability data collected with mitra tips. This comprises a first quality
+assessment, fill-in of missing values, between-sample normalization and
 normalization of injection order-dependent signal drift within the measurement
 run.
 
@@ -82,12 +81,11 @@ experimental measurements, in order to make the data more comparable.
 
 In this document we perform the normalization of the feature abundances on short
 term stability data collected with mitra tips.
-This comprises quality assessment based on the features abundances, eventual 
+This comprises quality assessment based on the features abundances, eventual
 normalization of a injection order-dependent signal drift within each batch (if
-this proves to increase signal quality as determined by the comparison of 
-abundances from replicated measurements). The preprocessing of the data is 
-described in file
-*sts_preprocessing_pos.Rmd*.
+this proves to increase signal quality as determined by the comparison of
+abundances from replicated measurements). The preprocessing of the data is
+described in file *sts_preprocessing_pos.Rmd*.
 
 ## Metabolomics data normalization
 
@@ -117,7 +115,7 @@ independent of any sample processing differences.
 
 ## Experimental design and normalization strategy
 
-The samples of the present experiment consist of samples blood samples that 
+The samples of the present experiment consist of samples blood samples that
 were collected with mitra tips and stored at different periods of time under
 differen circumstances.
 
@@ -149,21 +147,17 @@ form of `assays`, which can be easily accessed with the `assay` function.
 A `SummarizedExperiment` also allows us to retain annotation for each row and
 column, which will later help us to subset columns and rows, in order to easily
 access them with `colData` and `rowData`, respectively. Then, we assign
-different colours to each experimental group, as we did for the preprocessing. 
+different colours to each experimental group, as we did for the preprocessing.
 
 ```{r libraries-data, message = FALSE, warning = FALSE}
 library(xcms)
 library(RColorBrewer)
 library(pander)
 library(SummarizedExperiment)
-## register(bpstart(MulticoreParam(ncores)))
 library(doParallel)
-#registerDoParallel(ncores)
+registerDoParallel(ncores)
 register(DoparParam(), default = TRUE)
 library(CompMetaboTools)
-## Load utility functions for this document
-## source("util-functions.R")
-## source("sts_normalization_functions.R")
 ## Define colors for the groups.
 col_storage <- brewer.pal(6, name = "Set1")
 names(col_storage) <- c("4C_BAG",   # red
@@ -256,17 +250,13 @@ than truly detected peaks. Abundances are however relatively similar suggesting
 that for many missing peaks a signal from an ion was recorded, but peak
 detection failed.
 
-Afterwards, we compare the filled-in with the detected signal for *QC samples*. 
-We start by calculating the mean of both, then we proceed with plotting the results.
-Ideally, the plotted dots should be found along the diagonal `y = x` 
-(maximum correlation). Also, we compute the Pearson's correlation coefficient,
-specifying `use = "pairwise.complete.obs"`: this string is used to make explicit
-how to handle missing data, in this case calculating the correlation only using
-all complete pairs of values. Ideally, the filled-in signal should be correlated
-to the detected signal.
+Afterwards, we compare the filled-in with the detected signal for *QC samples*.
+We start by calculating the mean of both, then we proceed with plotting the
+results. Ideally, the filled-in signal should be correlated to the detected
+signal.
 
 ```{r correlation-filled-detected, fig.path = IMAGE_PATH, fig.cap = "Correlation of per-feature averaged detected and filled-in signal in QC samples.", echo = FALSE}
-avg_det <- rowMeans(assay(res_pos, "raw")[, res_pos$storage == "QC"], 
+avg_det <- rowMeans(assay(res_pos, "raw")[, res_pos$storage == "QC"],
                     na.rm = TRUE)
 avg_fil <- rowMeans(assay(res_pos, "raw_only_filled")[, res_pos$storage == "QC"],
                     na.rm = TRUE)
@@ -277,7 +267,9 @@ cor(log2(avg_det), log2(avg_fil), use = "pairwise.complete.obs")
 ```
 
 We can see a relatively high correlation between the detected and filled-in
-signal, especially for features with higher abundances. 
+signal, especially for features with higher abundances. For a considerable
+amount of features the detected signal is however much higher than the
+filled-in.
 
 We now calculate and compare for each feature in QC samples the difference
 between the detected and filled-in peak data. Evaluation in QC samples avoids
@@ -303,7 +295,7 @@ par(mar = c(0.2, 4.5, 2, 0.5))
 barplot(apply(assay(res_pos, "raw"), MARGIN = 2, function(x) sum(!is.na(x))),
         col = paste0(cols, 80), ylim = c(0, 10000),
         ylab = "Features", xaxt = "n", main = "Detected raw data")
-legend("top", horiz = TRUE, col = col_storage, legend = names(col_storage), 
+legend("top", horiz = TRUE, col = col_storage, legend = names(col_storage),
        lwd = 1)
 par(mar = c(0.2, 4.5, 0, 0.5))
 dobox(log2(assay(res_pos, "raw")), col = paste0(cols, "ff"), xaxt = "n",
@@ -312,54 +304,14 @@ points(colMeans(log2(assay(res_pos, "raw")), na.rm = TRUE), type = "l")
 grid(nx = NA, ny = NULL)
 ```
 
-In the plot above, we find the samples with lower intensity signals that we
-also found in the preprocessing step: in these samples considerably less peaks
-were identified; the mean intensity of these samples, though, is comparable to
-that of the others.
-
-The distribution of feature intensities seems to
-be comparable between samples and storage methods. The high similarity of
+The number of detected peaks and the distribution of feature intensities seems
+to be comparable between samples and storage methods. The high similarity of
 average abundances between samples visible above might however be misleading,
 since only signal from identified peaks are considered. Comparing signal
 intensities **after** filling-in missing peak data might be better, because it
 also reflects the fact that some features are simply not present in the data.
 
-Next, we show the filled-in values:
-
-```{r raw-boxplot-only-filled, fig.path = IMAGE_PATH, fig.height = 7, fig.width = 7 * phi, fig.cap = "Number of features and log2 abundance of filled-in data.", message = FALSE, echo = FALSE}
-layout(mat = matrix(1:2, ncol = 1), height = c(0.3, 0.7))
-cols <- col_storage[as.character(res_pos$storage)]
-par(mar = c(0.2, 4.5, 2, 0.5))
-barplot(apply(assay(res_pos, "raw_only_filled"), MARGIN = 2,
-              function(x) sum(!is.na(x))),
-        col = paste0(cols, 80), ylim = c(0, 8000),
-        ylab = "Features", xaxt = "n", main = "Filled-in raw data")
-legend("top", horiz = TRUE, col = col_storage, legend = names(col_storage), 
-       lwd = 1)
-par(mar = c(0.2, 4.5, 0, 0.5))
-dobox(log2(assay(res_pos, "raw_only_filled")), col = paste0(cols, "ff"),
-      xaxt = "n", border = paste0(cols, 60))
-points(colMeans(log2(assay(res_pos, "raw_only_filled")), na.rm = TRUE),
-       type = "l")
-grid(nx = NA, ny = NULL)
-```
-
-We can see that there is a higher number of rescued signals in the ambiguous
-samples: this indicates that a low intensity signal was probably not detected or
-discarded during the course of peak detection. In this case, it is observed that
-the mean abundance of these samples is lower than that of the others; this is
-expected and consistent with the boxplots showed above (lower intensity for
-filled-in signals).
-
-After filling in missing peak values the proportion of detected features is
-highly comparable between samples, but more differences between abundances are
-visible.
-
-Next we create relative log abundance plots that represent the difference of the
-(log) abundances of each feature in a sample compared to the median abundance of
-that feature in samples from the same sample group (source).
-
-Finally, we plot the complete data set (detected and filled-in signals):
+We thus plot next the complete data set (detected and filled-in signals):
 
 ```{r raw-boxplot-all, fig.path = IMAGE_PATH, fig.height = 7, fig.width = 7 * phi, fig.cap = "Number of features and log2 abundance of detected and filled-in data.", message = FALSE, echo = FALSE}
 layout(mat = matrix(1:2, ncol = 1), height = c(0.3, 0.7))
@@ -369,7 +321,7 @@ barplot(apply(assay(res_pos, "raw_filled"), MARGIN = 2,
               function(x) sum(!is.na(x))),
         col = paste0(cols, 80), ylim = c(0, 15000),
         ylab = "Features", xaxt = "n", main = "Detected and filled-in raw data")
-legend("top", horiz = TRUE, col = col_storage, legend = names(col_storage), 
+legend("top", horiz = TRUE, col = col_storage, legend = names(col_storage),
        lwd = 1)
 par(mar = c(0.2, 4.5, 0, 0.5))
 dobox(log2(assay(res_pos, "raw_filled")), col = paste0(cols, "ff"), xaxt = "n",
@@ -380,7 +332,29 @@ grid(nx = NA, ny = NULL)
 
 From this image, we can conclude that most of the missing signals have been
 rescued during the gap-filling step: the number of features, in fact, is
-comparable among all samples.
+comparable among all samples. Some samples show however a slightly lower average
+intensity.
+
+To evaluate whether (raw) feature intensities are dependent on the storage
+conditions we below average the 3 replicates per condition and compare the
+signal distributions.
+
+```{r raw-storage-condition, fig.path = IMAGE_PATH, fig.height = 7, fig.width = 7 * phi, fig.cap = "Distribution of average feature intensities for all storage conditions", echo = FALSE, message = FALSE}
+res_pos$storage_time <- paste0(res_pos$storage, "_", res_pos$time)
+res_pos$storage_time[res_pos$storage_time == "QC_QC"] <- "QC"
+
+#' calculate average intensity across 3 replicates per condition
+cond_ints <- lapply(sort(unique(res_pos$storage_time)), function(z) {
+    rowMeans(log2(assay(res_pos, "raw_filled")[, res_pos$storage_time == z]),
+             na.rm = TRUE)
+})
+names(cond_ints) <- sort(unique(res_pos$storage_time))
+par(mar = c(8, 4.3, 1, 0.5))
+boxplot(cond_ints, las = 2)
+grid()
+```
+
+Some conditions, mostly for longer term storage, show a larger spread of signal.
 
 We also plot the Relative Log Abundance (RLA) values for the raw data and for
 data after gap filling; these will be later used to assess the efficiency of
@@ -431,19 +405,36 @@ is_info <- read.table(
     "https://raw.githubusercontent.com/EuracBiomedicalResearch/lcms-standards/master/data/internal_standards.txt",
     sep = "\t", header = TRUE, as.is = TRUE)
 is_info <- is_info[!is.na(is_info$POS), ]
-is_info$class <- "IS"
-is_info$mzneut = NA
+is_info$mass = NA
 is_info$mz_ion = NA
 for (i in seq(nrow(is_info))) {
     if (grepl("C", is_info$formula[i]))
-        is_info$mzneut[i] <- getMolecule(is_info$formula[i])$exactmass
+        is_info$mass[i] <- getMolecule(is_info$formula[i])$exactmass
     else
-        is_info$mzneut[i] = as.numeric(is_info$formula[i])
+        is_info$mass[i] = as.numeric(is_info$formula[i])
     #' Calculate also the m/z
-    is_info$mz_ion[i] <- mass2mz(is_info$mzneut[i],
+    is_info$mz_ion[i] <- mass2mz(is_info$mass[i],
                                  adduct = is_info$POS[i])[1, 1]
 }
 is_info <- is_info[!is.na(is_info$mz_ion), ]
+```
+
+We next identify features potentially representing signal from the internal
+standards by matching their expected m/z and retention time.
+
+```{r}
+library(MetaboAnnotation)
+rowData(res_pos)$feature_id <- row.names(res_pos)
+prm <- MzRtParam(tolerance = 0, ppm = 10, toleranceRt = 20)
+
+is_data <- matchMz(res_pos, is_info, param = prm,
+                   mzColname = c("mzmed", "mz_ion"),
+                   rtColname = c("rtmed", "RT"))
+
+#' subset to only matching features
+is_data <- is_data[whichQuery(is_data)]
+is_data <- pruneTarget(is_data)
+
 ```
 
 We plot now the EIC for each identified internal standard:
@@ -451,52 +442,53 @@ We plot now the EIC for each identified internal standard:
 ```{r internal-standards-plot, echo = FALSE, message = FALSE, warning = FALSE}
 #' For each internal standard, try to find features that overlap the m/z
 #' and are close to the expected retention time.
-rt_tol <- 30
-is_info$feature_id <- NA_character_
-for (i in seq_len(nrow(is_info))) {
-    fts <- featureDefinitions(data_pos, mz = is_info$mz_ion[i], ppm = 10)
-    if (nrow(fts)) {
-        rtdiff <- abs(fts$rtmed - is_info$RT[i])
-        keep <- rtdiff < rt_tol
-        if (sum(keep) == 1)
-            is_info$feature_id[i] <- rownames(fts)[keep]
-    }
-}
-is_info <- is_info[!is.na(is_info$feature_id), ]
-is_info_features <- featureChromatograms(
-    data_pos, features = is_info$feature_id, expandRt = 5)
+is_chrs <- featureChromatograms(data_pos, features = is_data$feature_id,
+                                expandRt = 5)
 #' Plot the features for the internal standards.
-col <- col_storage[as.character(res_pos$storage)]
+col <- col_storage[as.character(is_chrs$storage)]
 dr <- paste0(IMAGE_PATH, "internal-standards/")
 dir.create(dr, showWarnings = FALSE)
-for (i in seq_len(nrow(is_info))) {
-    fn <- gsub("%", "", paste0(dr, "IS_", is_info[i, "name"], "_POS.png"))
-    chr <- is_info_features[i, ]
+for (i in seq_len(nrow(is_chrs))) {
+    fn <- paste0(dr, gsub("%", "p", is_data$target_name[i]), "-",
+                 is_data$feature_id[i], "_POS.png")
+    chr <- is_chrs[i, ]
     cls <- col[chromPeaks(chr)[, "sample"]]
     png(fn, width = 16, height = 8, units = "cm", res = 200, pointsize = 4)
     plot(chr, peakBg = paste0(cls, 20),
-         main = paste0(is_info$name[i], ": ",
+         main = paste0(is_data$target_name[i], ": ",
                        format(mz(chr)[1], digits = 6), "-",
                        format(mz(chr)[2], digits = 6)),
          peakCol = paste0(cls, 60))
-    abline(v = is_info$RT[i], lty = 2)
+    abline(v = is_data$target_RT[i], lty = 2)
     dev.off()
 }
+
+is_data <- filterMatches(is_data,
+                         queryValue = c("FT00393", "FT00393", "FT00392"),
+                         targetValue = c("L-Isoleucine (13C6, 99%; 15N, 99%)",
+                                         "L-Leucine (13C6, 99%; 15N, 99%)",
+                                         "L-Leucine (13C6, 99%; 15N, 99%)"),
+                         queryColname = "feature_id",
+                         targetColname = "target_name",
+                         keep = FALSE)
+is_data <- is_data[whichQuery(is_data)]
+is_data <- pruneTarget(is_data)
 ```
 
 All features possibly related to internal standards (i.e. with a matching m/z
-and a retention time within 30 seconds to the expected one) have been manually
+and a retention time within 20 seconds to the expected one) have been manually
 evaluated and only features have been assigned to internal standards if the
-signal was unambiguous. 
+signal was unambiguous.
 
 All the plots were inspected and were considered of good quality.
 
-The table below lists the internal standards and their assigned feature with 
+The table below lists the internal standards and their assigned feature with
 mean abundance and its standard deviation.
 
 ```{r, echo = FALSE, results = "asis"}
 #' table of internal standards with mean and sd of abundances (in log2 scale)
-tmp_fv <- assay(res_pos, "raw")[is_info$feature_id, ]
+tmp_fv <- assay(res_pos, "raw")[is_data$feature_id, ]
+is_info <- target(is_data)
 is_info$mean_abd <- rowMeans(log2(tmp_fv), na.rm = TRUE)
 is_info$sd_abd <- rowSds(log2(tmp_fv), na.rm = TRUE)
 is_info$RSD <- rowRsd(tmp_fv, na.rm = TRUE)
@@ -518,21 +510,18 @@ metabolites. Methods robust against such a bias, like the median ratio method
 (MRM [@Anders:2010fu]) or the trimmed mean of M-values (TMM [@Robinson:2010dd])
 used in RNAseq data normalization could be used instead. In previous analyses
 these methods had however a lower performance than the simple *median scaling*
-which is thus used below. As this median scaling approach tends to be biased by 
-the low intensities of metabolites calculated in the gap-filling process, the
-median was calculated only on the top 1000 features with highest abundances per
-sample (which are assumed to have on average the same abundance in all samples).
+which is thus used below.
 
 Below we calculate normalization factors based on the the median abundance per
 sample.
 
-```{r estimate-norm-factors, echo = FALSE, message = FALSE, eval = FALSE}
+```{r estimate-norm-factors, echo = TRUE, message = FALSE, eval = TRUE}
 ## Calculate median and scaling factors
 mdns <- apply(assay(res_pos, "raw_filled"), MARGIN = 2, median, na.rm = TRUE)
 nf_mdn <- mdns / median(mdns)
 ```
 
-```{r norm-factors-top-200, echo = TRUE, message = FALSE, eval = TRUE}
+```{r norm-factors-top-200, echo = FALSE, message = FALSE, eval = FALSE}
 median_top_x <- function(x, top = 500) {
     idx <- order(x, decreasing = TRUE)
     median(x[idx][seq_len(top)], na.rm = TRUE)
@@ -572,8 +561,8 @@ points(colMeans(log2(assay(res_pos, "median_filled")), na.rm = TRUE),
 grid(nx = NA, ny = NULL)
 ```
 
-We can now see that the median is the same across the whole range of samples,
-thus concluding that this first step of normalization worked as desired.
+Median scaling slightly reduced the differences in average intensities in the
+data set.
 
 We also generate RLA plots:
 
@@ -605,7 +594,7 @@ dependent signal drifts. In order to define whether there is a similar injection
 order dependent signal drift in each batch (i.e. the drift is independent of the
 batch) we fit feature-wise linear models to the (log2 transformed) data of QC
 samples within each batch and compare the slopes for each feature between the
-batches. 
+batches.
 
 Note that the models describing the batch effect and injection dependent signal
 drift is estimated on the detected peak data, i.e. prior to filling-in missing
@@ -646,7 +635,7 @@ mdls <- xcms:::rowFitModel(
                    data = as.data.frame(
                           colData(res_pos)[res_pos$storage == "QC", ]),
                    y = tmp[, res_pos$storage == "QC"],
-                   method = "lmrob",
+                   method = "lm",
                    minVals = 5)
 req_prop <- 3/4
 ```
@@ -654,19 +643,19 @@ req_prop <- 3/4
 We next *flag* and remove fitted models we consider potentially problematic. In
 particular, we remove models that were fitted to data points not spanning most
 of the injection index range (e.g. models that were fitted to values with
-injection indices from 1 to 20 or similar). In this case, we set `req_prop` to 
-`r req_prop`, meaning that the injection range of the signals used in the 
-fitting must span at least `r req_prop * 100`% of the total injection range; 
+injection indices from 1 to 20 or similar). In this case, we set `req_prop` to
+`r req_prop`, meaning that the injection range of the signals used in the
+fitting must span at least `r req_prop * 100`% of the total injection range;
 the models for which this is not valid will be then removed.
 
 Next, we calculate the slopes for each fitting and plot their distribution; we
 highlight in blue the slopes of the features calculated with a low injection
 range.
 
-```{r estimate-slopes-per-batch, message = FALSE, warning = FALSE, fig.path = IMAGE_PATH, fig.cap = "Plot of per-feataure estimates for the injection order dependent signal drift from the two batches.", fig.width = 6, fig.height = 6, echo = FALSE}
+```{r estimate-slopes-per-batch, message = FALSE, warning = FALSE, fig.path = IMAGE_PATH, fig.cap = "Plot of per-feataure estimates for the injection order dependent signal drift.", fig.width = 6, fig.height = 6, echo = FALSE}
 ## Calculating flags
 flgs_inj_range <- vapply(mdls, flag_model_inj_range, logical(1),
-                         min_range = diff(range(res_pos$injection_idx)) 
+                         min_range = diff(range(res_pos$injection_idx))
                          * req_prop, column = "injection_idx")
 ## Calculate slopes for
 slps <- vapply(mdls, function(z) {
@@ -694,7 +683,7 @@ fts_adj <- sort(unique(c(
 
 Most of the slopes, that represent the estimated injection order-dependent
 signal drift, are close to 0 suggesting most features not being affected by this
-bias. 
+bias.
 
 The table below lists the number of features for which the model was fitted and
 the number of features for which model fitting was skipped or discarded.
@@ -716,11 +705,11 @@ was defined.
 Most of the slopes from the models describing the injection dependent signal
 drift are close to 0 suggesting only a relatively low influence.
 
-Finally, we apply the within batch correction adjusting all feature abundances 
-(also filled-in and imputed values) based on the estimated models. Adjustment 
-resulted in measurements with negative (log2) abundances. These were replaced 
-by half of the minimum non negative intensity for that feature. Note however 
-that quite some log2 abundances are smaller than 1, which represents negative 
+Finally, we apply the within batch correction adjusting all feature abundances
+(also filled-in and imputed values) based on the estimated models. Adjustment
+resulted in measurements with negative (log2) abundances. These were replaced
+by half of the minimum non negative intensity for that feature. Note however
+that quite some log2 abundances are smaller than 1, which represents negative
 intensities in natural scale.
 
 ```{r apply-within-batch-adjustment, message = FALSE, warning = FALSE}
@@ -745,7 +734,7 @@ Evaluation of the normalization performance can be done using different
 samples/measurements of the present data set:
 - sample pool (QC): the same sample measured repeatedly across the data
   set. Because it is a pool of all study sample it is an ideal *general
-  representation* of the whole experiment. 
+  representation* of the whole experiment.
   Also, if e.g. the injection order dependent signal drift is estimated on
   these pooled samples evaluating the performance of this normalization on them
   leads to biased (overly optimistic) performance indicators.
@@ -797,24 +786,13 @@ plot_pca(pc_norm, bg = paste0(col_storage[as.character(res_pos$storage)], 80),
          pch = pch, col = "#00000080")
 ```
 
-The percentage of variance seen on PC1-PC4 remains almost the same after 
+The percentage of variance seen on PC1-PC4 remains almost the same after
 normalizing the data. We can only observe some small changes in the clustering.
 
 We also take a look at the PCA plot coloring the different storage time periods:
 
 ```{r PCA-raw-normalized_time, fig.path = IMAGE_PATH, fig.width = 9, fig.height = 9, fig.cap = "PCA of raw and normalized feature abundances.", echo = FALSE}
 ## Perform data imputation for PCA
-assays(res_pos)$normalized_filled_imputed <-
-                  imputeRowMinRand(assay(res_pos, "normalized_filled"),
-                                   method = "from_to")
-assays(res_pos)$raw_filled_imputed <-
-                  imputeRowMinRand(assay(res_pos, "raw_filled"),
-                                   method = "from_to")
-pc_raw <- prcomp(t(log2(assay(res_pos, "raw_filled_imputed"))),
-                 scale = FALSE, center = TRUE)
-pc_norm <- prcomp(t(log2(assay(res_pos, "normalized_filled_imputed"))),
-                  scale = FALSE, center = TRUE)
-pch <- rep(21, ncol(res_pos))
 
 par(mfrow = c(2, 2), mar = c(4, 4, 1, 0.5))
 plot_pca(pc_raw, bg = paste0(col_time[as.character(res_pos$time)], 80),
@@ -831,7 +809,7 @@ plot_pca(pc_norm, bg = paste0(col_time[as.character(res_pos$time)], 80),
          pch = pch, col = "#00000080")
 ```
 
-Then, we take a closer look to the storage methods we are most interested in, 
+Then, we take a closer look to the storage methods we are most interested in,
 starting with the QC sample as we used them for the normalization step:
 
 ```{r PCA-raw-normalized-POOL, fig.path = IMAGE_PATH, fig.width = 9, fig.height = 9, fig.cap = "PCA of raw and normalized feature abundances for sample pools.", echo = FALSE}
@@ -843,18 +821,18 @@ pc_norm_pool <- prcomp(t(log2(assay(tmp_ppool, "normalized_filled_imputed"))),
 pch <- rep(21, ncol(res_pos))
 
 par(mfrow = c(2, 2), mar = c(4, 4, 1, 0.5))
-plot_pca(pc_raw_pool, bg = paste0(col_storage[as.character(res_pos$storage)], 80),
+plot_pca(pc_raw_pool, bg = paste0(col_storage[as.character(tmp_ppool$storage)], 80),
          pc_x = 1, pc_y = 2, main = "raw data, pool",
          pch = pch, col = "#00000080")
 legend("topleft", col = col_storage, legend = names(col_storage), pch = 16,
        cex = 0.4)
-plot_pca(pc_raw_pool, bg = paste0(col_storage[as.character(res_pos$storage)], 80),
+plot_pca(pc_raw_pool, bg = paste0(col_storage[as.character(tmp_ppool$storage)], 80),
          pc_x = 3, pc_y = 4, main = "raw data, pool",
          pch = pch, col = "#00000080")
-plot_pca(pc_norm_pool, bg = paste0(col_storage[as.character(res_pos$storage)], 80),
+plot_pca(pc_norm_pool, bg = paste0(col_storage[as.character(tmp_ppool$storage)], 80),
          pc_x = 1, pc_y = 2, main = "normalized data, pool",
          pch = pch, col = "#00000080")
-plot_pca(pc_norm_pool, bg = paste0(col_storage[as.character(res_pos$storage)], 80),
+plot_pca(pc_norm_pool, bg = paste0(col_storage[as.character(tmp_ppool$storage)], 80),
          pc_x = 3, pc_y = 4, main = "normalized data, pool",
          pch = pch, col = "#00000080")
 ```
@@ -870,22 +848,22 @@ pc_norm_rt <- prcomp(t(log2(assay(tmp_rt, "normalized_filled_imputed"))),
                   scale = FALSE, center = TRUE)
 pch <- rep(21, ncol(res_pos))
 par(mfrow = c(2, 2), mar = c(4, 4, 1, 0.5))
-plot_pca(pc_raw_rt, bg = paste0(col_storage[as.character(res_pos$storage)], 80),
+plot_pca(pc_raw_rt, bg = paste0(col_time[as.character(tmp_rt$time)], 80),
          pc_x = 1, pc_y = 2, main = "raw data, rt", pch = pch, col = "#00000080")
-legend("topleft", col = col_storage, legend = names(col_storage), pch = 16,
+legend("topleft", col = col_time, legend = names(col_time), pch = 16,
        cex = 0.4)
-plot_pca(pc_raw_rt, bg = paste0(col_storage[as.character(res_pos$storage)], 80),
-         pc_x = 3, pc_y = 4, main = "raw data, rt", 
+plot_pca(pc_raw_rt, bg = paste0(col_time[as.character(tmp_rt$time)], 80),
+         pc_x = 3, pc_y = 4, main = "raw data, rt",
          pch = pch, col = "#00000080")
-plot_pca(pc_norm_rt, bg = paste0(col_storage[as.character(res_pos$storage)], 80),
+plot_pca(pc_norm_rt, bg = paste0(col_time[as.character(tmp_rt$time)], 80),
          pc_x = 1, pc_y = 2, main = "normalized data, rt",
          pch = pch, col = "#00000080")
-plot_pca(pc_norm_rt, bg = paste0(col_storage[as.character(res_pos$storage)], 80),
+plot_pca(pc_norm_rt, bg = paste0(col_time[as.character(tmp_rt$time)], 80),
          pc_x = 3, pc_y = 4, main = "normalized data, rt",
          pch = pch, col = "#00000080")
 ```
 
-Next, we take a look at the PCA analysis of samples stored in plastic bags 
+Next, we take a look at the PCA analysis of samples stored in plastic bags
 together with dessicants:
 
 ```{r PCA-raw-normalized-bag, fig.path = IMAGE_PATH, fig.width = 9, fig.height = 9, fig.cap = "PCA of raw and normalized feature abundances for samples stored in plastic bags.", echo = FALSE}
@@ -897,31 +875,31 @@ pc_norm_bag <- prcomp(t(log2(assay(tmp_bag, "normalized_filled_imputed"))),
 pch <- rep(21, ncol(res_pos))
 
 par(mfrow = c(2, 2), mar = c(4, 4, 1, 0.5))
-plot_pca(pc_raw_bag, bg = paste0(col_storage[as.character(res_pos$storage)], 80),
+plot_pca(pc_raw_bag, bg = paste0(col_time[as.character(tmp_bag$time)], 80),
          pc_x = 1, pc_y = 2, main = "raw data, bag",
          pch = pch, col = "#00000080")
-legend("topleft", col = col_storage, legend = names(col_storage), pch = 16,
+legend("topleft", col = col_time, legend = names(col_time), pch = 16,
        cex = 0.4)
-plot_pca(pc_raw_bag, bg = paste0(col_storage[as.character(res_pos$storage)], 80),
+plot_pca(pc_raw_bag, bg = paste0(col_time[as.character(tmp_bag$time)], 80),
          pc_x = 3, pc_y = 4, main = "raw data, bag",
          pch = pch, col = "#00000080")
-plot_pca(pc_norm_bag, bg = paste0(col_storage[as.character(res_pos$storage)], 80),
+plot_pca(pc_norm_bag, bg = paste0(col_time[as.character(tmp_bag$time)], 80),
          pc_x = 1, pc_y = 2, main = "normalized data, bag",
          pch = pch, col = "#00000080")
-plot_pca(pc_norm_bag, bg = paste0(col_storage[as.character(res_pos$storage)], 80),
+plot_pca(pc_norm_bag, bg = paste0(col_time[as.character(tmp_bag$time)], 80),
          pc_x = 3, pc_y = 4, main = "normalized data, bag",
          pch = pch, col = "#00000080")
 ```
 
-Lastly, we plot the raw and normalized feature abundances for the internal 
+Lastly, we plot the raw and normalized feature abundances for the internal
 standards:
 
 ```{r PCA-raw-normalized-IS, fig.path = IMAGE_PATH, fig.width = 9, fig.height = 9, fig.cap = "PCA of raw and normalized feature abundances for internal standards." , echo = FALSE}
 pc_raw <- prcomp(
-    t(log2(assay(res_pos, "raw_filled_imputed")[is_info$feature_id, ])),
+    t(log2(assay(res_pos, "raw_filled_imputed")[is_data$feature_id, ])),
     scale = FALSE, center = TRUE)
 pc_norm <- prcomp(
-    t(log2(assay(res_pos, "normalized_filled_imputed")[is_info$feature_id, ])),
+    t(log2(assay(res_pos, "normalized_filled_imputed")[is_data$feature_id, ])),
     scale = FALSE, center = TRUE)
 pch <- rep(21, ncol(res_pos))
 
@@ -993,7 +971,7 @@ boxplot(xcms::rowRla(assay(res_pos, "median_filled"), group = res_pos$storage),
         xaxt = "n", ylab = "RLA", main = "Median-scaled data")
 grid(nx = NA, ny = NULL)
 ## Normalized data
-boxplot(xcms::rowRla(assay(res_pos, "normalized_filled"), 
+boxplot(xcms::rowRla(assay(res_pos, "normalized_filled"),
                      group = res_pos$storage),
         cex = 0.5, pch = 16, col = col_storage[as.character(res_pos$storage)],
         border = paste0(col_storage[as.character(res_pos$storage)], 40),
@@ -1034,24 +1012,24 @@ rsd_bbn_sts <- rowRsd(
 
 ```{r RSD-internal-standards, message = FALSE, echo = FALSE, warning = FALSE}
 ## Calculate RSD on internal standards in POOL signals
-tmp_is <- assay(res_pos, "raw_filled")[is_info$feature_id, ]
+tmp_is <- assay(res_pos, "raw_filled")[is_data$feature_id, ]
 rsd_raw_is <- rowRsd(tmp_is[, res_pos$storage == "QC"])
-tmp_is <- assay(res_pos, "median_filled")[is_info$feature_id, ]
+tmp_is <- assay(res_pos, "median_filled")[is_data$feature_id, ]
 rsd_scl_is <- rowRsd(tmp_is[, res_pos$storage == "QC"])
-tmp_is <- assay(res_pos, "normalized_filled")[is_info$feature_id, ]
+tmp_is <- assay(res_pos, "normalized_filled")[is_data$feature_id, ]
 rsd_bbn_is <- rowRsd(tmp_is[, res_pos$storage == "QC"])
 ## Calculate RSD on good internal standards in study samples
-tmp_is <- assay(res_pos, "raw_filled")[is_info$feature_id, ]
+tmp_is <- assay(res_pos, "raw_filled")[is_data$feature_id, ]
 rsd_raw_is_sts <- rowRsd(tmp_is[, res_pos$storage != "QC"])
-tmp_is <- assay(res_pos, "median_filled")[is_info$feature_id, ]
+tmp_is <- assay(res_pos, "median_filled")[is_data$feature_id, ]
 rsd_scl_is_sts <- rowRsd(tmp_is[, res_pos$storage != "QC"])
-tmp_is <- assay(res_pos, "normalized_filled")[is_info$feature_id, ]
+tmp_is <- assay(res_pos, "normalized_filled")[is_data$feature_id, ]
 rsd_bbn_is_sts <- rowRsd(tmp_is[, res_pos$storage != "QC"])
 ```
 
 ```{r norm-rsd-plot, fig.path = IMAGE_PATH, message = FALSE, echo = FALSE, fig.height = 7, fig.width = 7 * phi, fig.cap = "Coefficient Of Variation (RSD)."}
 par(mfrow = c(2, 2))
-boxplot(list(raw = rsd_raw, scaled = rsd_scl, 
+boxplot(list(raw = rsd_raw, scaled = rsd_scl,
              normalized = rsd_bbn),
         main = "All features - POOL samples")
 grid(nx = NA, ny = NULL)
