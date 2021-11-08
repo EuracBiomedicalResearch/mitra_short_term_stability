@@ -50,7 +50,7 @@ ncores <- as.integer(Sys.getenv("SLURM_JOB_CPUS_PER_NODE", 4)) - 1L
 
 # Abstract
 
-This document defines the normalization of the feature abundance  on short term
+This document defines the normalization of the feature abundance on short term
 stability data collected with mitra tips. This comprises a first quality
 assessment, fill-in of missing values, between-sample normalization and
 normalization of injection order-dependent signal drift within the measurement
