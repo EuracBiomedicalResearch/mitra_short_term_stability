@@ -10,18 +10,12 @@ output:
     toc_float: true
 bibliography: references.bib
 csl: biomed-central.csl
-references:
-- id: dummy
-  title: no title
-  author:
-  - family: noname
-    given: noname
 ---
 
 ```{r setup, echo = FALSE, results = "asis", warning = FALSE}
 library(BiocStyle)
 BiocStyle::markdown()
-knitr::opts_chunk$set(echo = TRUE, message = FALSE)
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, dev = c("png", "pdf"))
 ```
 
 ```{r parameters, echo = FALSE, warning = FALSE}
@@ -46,8 +40,8 @@ dir.create(RESULT_PATH, recursive = TRUE, showWarnings = FALSE)
 # Introduction
 
 In this document we perform the differential abundance analysis of the features
-from short term stability data collected with mitra tips, with the aim of 
-finding significant storage-related features. This task is performed by 
+from short term stability data collected with mitra tips, with the aim of
+finding significant storage-related features. This task is performed by
 hypothesis testing, where we try to identify which metabolites have the most
 different concentrations.
 We follow a semi-targeted approach, where we look at concentrations of features
@@ -59,10 +53,10 @@ corresponding to lab-internal set of standards.
 First, we load the required packages and the data, after preprocessing and
 normalization. The end result of these steps is a `SummarizedExperiment` that
 contains aligned data, where features are grouped (after correspondence), and
-that have undergone gap filling, normalization by the median, linear fitting and 
-per-feature between-batch normalization to remove any unwanted variability. 
-The `SummarizedExperiment` lets us store all the information regarding the 
-normalization steps in the form of `assays`, which we are still able to access 
+that have undergone gap filling, normalization by the median, linear fitting and
+per-feature between-batch normalization to remove any unwanted variability.
+The `SummarizedExperiment` lets us store all the information regarding the
+normalization steps in the form of `assays`, which we are still able to access
 to proceed with the analysis.
 
 ```{r load-data, echo = FALSE, warning = FALSE}
@@ -71,12 +65,10 @@ library(limma)
 library(pheatmap)
 library(writexl)
 library(SummarizedExperiment)
-library(RColorBrewer)
-library(MsFeatures)
 library(CompMetaboTools)
+library(RColorBrewer)
 library(pander)
 load("data/RData/sts_normalization_pos/res_pos.RData")
-res_pos$sample_pair <- paste0(res_pos$source, ".", res_pos$sample)
 ```
 
 It is important now to remove the `POOL` samples from the dataset, because the
@@ -84,9 +76,6 @@ analysis has to be performed only on study samples; the `POOL` samples, though
 are still required to evaluate the goodness of the detected features, therefore
 they will be stored in a separate `SummarizedExperiment` object that can be
 accessed when needed.
-We also exclude the `RBC` samples from our analysis, as these samples showed
-a noisy signal beforehand. We also store them separately in a 
-`SummarizedExperiment` object.
 
 We also assign the colours as seen before.
 
@@ -97,20 +86,20 @@ res_pos <- res_pos[, res_pos$storage != "QC"]
 res_pos$storage <- factor(as.character(res_pos$storage))
 
 ## Define colors for the groups.
-col_storage <- brewer.pal(6, name = "Set1")
-names(col_storage) <- c("4C_BAG",   # red
-                        "RT",        # blue
-                        "BAG",       # green
-                        "VACUUM",    # purple
-                        "4C_VACUUM", # orange
-                        "QC")        # yellow
-col_time <- brewer.pal(8, name = "Set3")
-names(col_time) <- c("1d",
-                     "1w",
-                     "2d",
-                     "2h",
-                     "3d",
+col_storage <- brewer.pal(12, name = "Paired")[c(6, 2, 10, 1, 9, 7)]
+names(col_storage) <- c("RT",           # red
+                        "BAG",          # blue
+                        "VACUUM",       # purple
+                        "4C_BAG",       # light blue
+                        "4C_VACUUM",    # light purple
+                        "QC")           # light orange
+col_time <- brewer.pal(9, name = "OrRd")[c(3, 4, 5, 6, 7, 8, 9, 1)]
+names(col_time) <- c("2h",
                      "6h",
+                     "1d",
+                     "2d",
+                     "3d",
+                     "1w",
                      "2w",
                      "QC")
 
@@ -151,18 +140,16 @@ std_info <- read.table(
     sep = "\t", header = TRUE, as.is = TRUE)
 std_info <- std_info[!is.na(std_info[, "POS"]), ]
 rownames(std_info) <- 1:nrow(std_info)
-std_info$mzneut = NA
+std_info$exact_mass = NA
 std_info$mz_ion = NA
 for (i in seq(nrow(std_info))) {
-    if (grepl("C", std_info$formula[i])) {
-        std_info$mzneut[i] <- getMolecule(
-            as.character(std_info$formula[i]))$exactmass
-    } else {
-        std_info$mzneut[i] = as.numeric(std_info$formula[i])
-    }
+    if (grepl("C", std_info$formula[i]))
+        std_info$exact_mass[i] <- getMolecule(std_info$formula[i])$exactmass
+    else
+        std_info$exact_mass[i] = as.numeric(std_info$formula[i])
     ## Calculate also the m/z
     std_info$mz_ion[i] <- mass2mz(
-        std_info$mzneut[i], adduct = std_info[i, "POS"])[1, 1]
+        std_info$exact_mass[i], adduct = std_info[i, "POS"])[1, 1]
 }
 std_info <- std_info[!is.na(std_info$mz_ion), ]
 std_info <- std_info[order(std_info$name), ]
@@ -184,30 +171,30 @@ chromatogram and plot these.
 ```{r}
 ## Match feature's m/z and rt values against expecte values for standards.
 library(MetaboAnnotation)
-register(SerialParam())
-rowData(res_pos)$ft <- row.names(res_pos)
-## Note: would need a ppm of 40 to get Homocysteine-FT0178
+rowData(res_pos)$feature_id <- row.names(res_pos)
 par <- MzRtParam(tolerance = 0, ppm = 20, toleranceRt = 30)
-mo <- matchMz(res_pos, std_info, param = par, mzColname = c("mzmed", "mz_ion"), 
-              rtColname = c("rtmed", "RT"))
+std_match <- matchMz(res_pos, std_info, param = par,
+                     mzColname = c("mzmed", "mz_ion"),
+                     rtColname = c("rtmed", "RT"))
 ## Subset to matching features.
-mo <- mo[whichQuery(mo)]
-mo <- pruneTarget(mo)
-chrs <- featureChromatograms(tmp, features = mo$ft, expandRt = 7, filled = TRUE)
+std_match <- std_match[whichQuery(std_match)]
+std_match <- pruneTarget(std_match)
+chrs <- featureChromatograms(tmp, features = std_match$feature_id,
+                             expandRt = 7, filled = TRUE)
 sample_colors <- col_storage[tmp$storage]
-for (i in seq_len(length(mo$ft))) {
+for (i in seq_len(length(std_match$feature_id))) {
     chr <- chrs[i, ]
     pks <- chromPeaks(chr)
-    fl <- mo$target_name[i]
-    png(paste0(dr, fl, "-", mo$ft[i], ".png"),
+    fl <- std_match$target_name[i]
+    png(paste0(dr, fl, "-", std_match$feature_id[i], ".png"),
         width = 10, height = 8, units = "cm", res = 300, pointsize = 6)
     plot(chr, col = "#00000040",
          peakCol = paste0(sample_colors[pks[, "column"]], 50),
          peakBg = paste0(sample_colors[pks[, "column"]], 10))
-    abline(v = mo$target_RT[i])
-    legend("topleft", legend = c(mo$ft[i], fl,
-                                 paste0("rt: ", mo$target_RT[i]),
-                                 paste0("mz: ", mo$target_mz_ion[i])))
+    abline(v = std_match$target_RT[i])
+    legend("topleft", legend = c(std_match$feature_id[i], fl,
+                                 paste0("rt: ", std_match$target_RT[i]),
+                                 paste0("mz: ", std_match$target_mz_ion[i])))
     dev.off()
 }
 ```
@@ -226,26 +213,21 @@ to_keep <- c(FT00602 = "1-Methylhistidine",
              FT01648 = "8-Oxo-2-Deoxyguanosine",
              FT00912 = "Acetylcarnitine",
              FT01254 = "Acetyl-Glucosamine",
+             FT00912 = "Acetylcarnitine",
              FT00850 = "Acetylhistidine",
              FT00901 = "ADMA",
              FT03607 = "ADP",
              FT00127 = "Alanine",
-             FT00546 = "alpha-Aminoadipic acid",
-             FT02791 = "alpha-Lactose", 
+             FT02791 = "alpha-Lactose",
              FT02548 = "AMP",
              FT00643 = "Arginine",
              FT00338 = "Asparagine",
              FT00239 = "Betaine",
-             #FT01164 = "C4 Carnitine",
-             #FT01276 = "C5 Carnitine", #looks noisy
              FT00824 = "Caffeine",
              FT01117 = "Carnosine",
              FT00167 = "Choline",
              FT00655 = "Citrulline",
-             ## c("Corticosterone", "FT02541"), # rt shifted 20s
-             ##c("Creatine", "FT00334"),
-             FT00219 = "Creatinine",
-             #FT01973 = "dCMP",
+             FT01973 = "dCMP",
              FT03607 = "dGDP",
              FT02549 = "dGMP",
              FT00894 = "Fructose", # same as glucose and mannose
@@ -254,6 +236,7 @@ to_keep <- c(FT00602 = "1-Methylhistidine",
              FT00444 = "Glutamine",
              FT06228 = "Glutathione Oxidized", # same as Glu. Reduced
              FT06228 = "Glutathione Reduced", # same as Glu. Oxidized
+             FT00605 = "Glyceraldehyde 2-phosphate",
              FT01379 = "Glycero-phosphocholine",
              FT00060 = "Glycine",
              FT01648 = "Guanosine",
@@ -263,54 +246,48 @@ to_keep <- c(FT00602 = "1-Methylhistidine",
              FT00374 = "Hypoxanthine",
              FT00335 = "Isoleucine",
              FT00980 = "L,L-Cyclo(leucylprolyl)",
-             FT00348 = "L-Aspartic Acid", 
-             FT00554 = "L-Carnitine", 
+             FT00348 = "L-Aspartic Acid",
              FT00253 = "L-Cysteine",
              FT00335 = "Leucine", #same as Isoleucine
              FT00457 = "L-Glutamic Acid",
              FT00447 = "Lysine",
              FT00894 = "Mannose", # same as Fructose and Glucose
              FT00469 = "Methionine",
-             FT00575 = "Methioninesulfoxide", 
-             ## c("Myoinositol", "FT00894"), # same as fructose, glucose and mannose
+             FT00575 = "Methioninesulfoxide",
              FT00641 = "N-Acetylornithine",
              FT06938 = "NAD",
-             FT00272 = "Niacinamide",
              FT00340 = "Ornithine",
-             FT03267 = "Palmitoylcarnitine", 
+             FT03267 = "Palmitoylcarnitine",
              FT00578 = "Phenylalanine",
              FT00255 = "Phenylethylamine",
              FT00721 = "Phosphorylcholine",
              FT00414 = "Phosphorylethanolamine",
-             ##c("Pipecolic acid", "FT00322"),
              FT00232 = "Proline",
              FT03079 = "SAH",
              FT03263 = "SAMe",
              FT00901 = "SDMA",
              FT00179 = "Serine",
-             FT00917 = "Sorbitol", 
+             FT00917 = "Sorbitol",
              FT03017 = "Sphingosine-1-phosphate",
              FT01866 = "Sphingosine",
-             FT02791 = "Sucrose", 
+             FT02791 = "Sucrose",
              FT00295 = "Taurine",
              FT00245 = "Threonine",
              FT00920 = "Tryptophan",
              FT00695 = "Tyrosine",
              FT00239 = "Valine")
-mo <- filterMatches(mo, queryValue = names(to_keep), 
-                    targetValue = to_keep, 
-                    queryColname = "ft",
-                    targetColname = "target_name",
-                    keep = TRUE)
-mo <- mo[whichQuery(mo)]
-mo <- pruneTarget(mo) # Probably it's not very useful but since these two lines
-# are used one after the other we could create a function e.g. reduceMatched 
-# that does the two things
-## Handling duplicates.
-md <- as.data.frame(matchedData(mo, c("ft", "target_name", "target_HMDB.code")))
-md <- split(md, md$ft)
+std_match <- filterMatches(std_match, queryValue = names(to_keep),
+                           targetValue = to_keep,
+                           queryColname = "feature_id",
+                           targetColname = "target_name",
+                           keep = TRUE)
+std_match <- std_match[whichQuery(std_match)]
+std_match <- pruneTarget(std_match)
+md <- as.data.frame(matchedData(std_match, c("feature_id", "target_name",
+                                             "target_HMDB.code")))
+md <- split(md, md$feature_id)
 md <- do.call(rbind, lapply(md, function(z) {
-    tmp <- data.frame(ft = z$ft[1L])
+    tmp <- data.frame(ft = z$feature_id[1L])
     tmp$name <- paste0(z$target_name, collapse = ";")
     tmp$HMDB <- paste0(z$target_HMDB.code, collapse = ";")
     tmp
@@ -331,12 +308,12 @@ Next, only the features assigned to the standards are taken into consideration
 and are subsetted in the `std_res` object.
 
 ```{r std-subset, echo = FALSE}
-std_res <- query(mo)
+std_res <- query(std_match)
 rowData(std_res) <- cbind(rowData(std_res),
                           md[rownames(std_res), c("name", "HMDB")])
 ```
 
-The subsetting reduced the number of features to `r length(std_res)`. 
+The subsetting reduced the number of features to `r length(std_res)`.
 
 A PCA analysis is then performed on the subset to verify whether anything has
 changed and if any similarities among the samples are visible or not.
@@ -348,19 +325,37 @@ pc <- prcomp(t(log2(assay(std_res, "normalized_filled_imputed"))),
 
 ```{r standards-pca-plot, fig.path = IMAGE_PATH, fig.cap = "PCA of the samples based on intensities of known compounds.", fig.width = 7 * phi, fig.height = 7, echo = FALSE}
 par(mfrow = c(1, 2))
-plot_pca(pc, col = paste0(col_storage[as.character(std_res$storage)], 90),
-         pc_x = 1, pc_y = 2, labels = std_res$differentiation)
-plot_pca(pc, col = paste0(col_storage[as.character(std_res$storage)], 90),
-         pc_x = 3, pc_y = 4)
+plot_pca(pc, col = "#00000080",
+         bg = paste0(col_storage[as.character(std_res$storage)], 90),
+         pc_x = 1, pc_y = 2, pch = 21)
+plot_pca(pc, col = "#00000080",
+         bg = paste0(col_storage[as.character(std_res$storage)], 90),
+         pc_x = 3, pc_y = 4, pch = 21)
 legend("topleft", col = col_storage, legend = names(col_storage),
-       title = "phenotype", pch = 16, ncol = 2)
+       title = "storage", pch = 16, ncol = 2)
 ```
 
 In the PC1 plot, we see a separation of samples stored at room temperture (RT),
 samples that were stored under other circumstances cannot be distinguished from
 the PCA plots.
 
-## Heatmap 
+```{r standards-pca-plot-time, fig.path = IMAGE_PATH, fig.cap = "PCA of the samples based on intensities of known compounds.", fig.width = 7 * phi, fig.height = 7, echo = FALSE}
+par(mfrow = c(1, 2))
+pchs <- 21:25
+names(pchs) <- c("RT", "BAG", "4C_BAG", "VACUUM", "4C_VACUUM")
+plot_pca(pc, col = "#00000080",
+         bg = paste0(col_time[as.character(std_res$time)], 90),
+         pc_x = 1, pc_y = 2, pch = pchs[std_res$storage])
+plot_pca(pc, col = "#00000080",
+         bg = paste0(col_time[as.character(std_res$time)], 90),
+         pc_x = 3, pc_y = 4, pch = pchs[std_res$storage])
+legend("topleft", pch = pchs, legend = names(pchs),
+       title = "storage", ncol = 2)
+```
+
+
+
+## Heatmap
 
 To visualize the intensity of all detected standards across the three matrices,
 we created a heatmap of the known compounds we found in our samples.
@@ -377,18 +372,19 @@ rownames(ann) <- colnames(tmp)
 pm <- pheatmap(tmp, annotation_col = ann, labels_col = colnames(tmp),
                breaks = seq(-5, 5, length.out = 101),
                annotation_color = list(storage = col_storage,
-                                   time = col_time))
+                                       time = col_time),
+               show_colnames = FALSE)
 ```
 
 In the heatmap we see two main cluster, both containing samples from all
 storage conditions. The second cluster contains all samples that were stored
-for 6 hours and most of the samples stored for one day, whereas the first 
+for 6 hours and most of the samples stored for one day, whereas the first
 cluster contains most of the smples stored for two days.
 
 The metabolites also cluster into different group. One cluster contains only
 **Sphingosine-1-phosphate** (FT03017) which shows a low intensity in samples
-stored for 6h or 1d, but has a high intensity all other samples. In contrast, 
-another cluster of **alpha-Lactose, Sucrose and SAMe** shows higher 
+stored for 6h or 1d, but has a high intensity all other samples. In contrast,
+another cluster of **alpha-Lactose, Sucrose and SAMe** shows higher
 concentrations in the second cluster compared to the first.
 
 Now, we start with the differential abundance analysis.
@@ -396,15 +392,15 @@ Now, we start with the differential abundance analysis.
 ## Differential abundance analysis
 
 We next identify metabolites with significant differences in their abundances
-between the sample matrices. The differential abundance analysis is performed
+between the storage conditions. The differential abundance analysis is performed
 on the subset of features that have previously been assigned to the
 standards. We apply feature-wise multiple linear regression using the `lmFit`
 function and we add the matrix defining the contrasts using
-`contrast.fit`. Then, we calculate the p-values with `eBayes`.  Subsequently, we
+`contrast.fit`. Then, we calculate the p-values with `eBayes`. Subsequently, we
 generate a data frame with the coefficients, the raw and adjusted p-values (we
 apply a Benjamini-Hochberg correction for better control of the false discovery
-rate), the average intensity of signals in plasma samples, capillary and venous
-blood samples and whether or not a feature is to be considered significant.
+rate), the average intensity of signals per sample group and whether or not a
+feature is to be considered significant.
 
 
 ```{r analysis}
@@ -419,36 +415,36 @@ fit <- lmFit(log2(assay(std_res, "normalized_filled_imputed")), design = dsgn)
 
 ## Fit the actual contrasts of interest
 contr_mat <- makeContrasts(
-  RT2hvsRT6h = storetimeRT_2h - storetimeRT_6h,
-  RT2hvsRT1d = storetimeRT_2h - storetimeRT_1d,
-  RT2hvsRT2d = storetimeRT_2h - storetimeRT_2d,
-  RT2hvsRT3d = storetimeRT_2h - storetimeRT_3d,
-  RT2hvsRT1w = storetimeRT_2h - storetimeRT_1w,
-  RT2hvsRT2w = storetimeRT_2h - storetimeRT_2w,
-  RT2hvsBAG6h = storetimeRT_2h - storetimeBAG_6h,
-  RT2hvsBAG1d = storetimeRT_2h - storetimeBAG_1d,
-  RT2hvsBAG2d = storetimeRT_2h - storetimeBAG_2d,
-  RT2hvsBAG3d = storetimeRT_2h - storetimeBAG_3d,
-  RT2hvsBAG1w = storetimeRT_2h - storetimeBAG_1w,
-  RT2hvsBAG2w = storetimeRT_2h - storetimeBAG_2w,
-  RT2hvsVACUUM6h = storetimeRT_2h - storetimeVACUUM_6h,
-  RT2hvsVACUUM1d = storetimeRT_2h - storetimeVACUUM_1d,
-  RT2hvsVACUUM2d = storetimeRT_2h - storetimeVACUUM_2d,
-  RT2hvsVACUUM3d = storetimeRT_2h - storetimeVACUUM_3d,
-  RT2hvsVACUUM1w = storetimeRT_2h - storetimeVACUUM_1w,
-  RT2hvsVACUUM2w = storetimeRT_2h - storetimeVACUUM_2w,
-  RT2hvs4CBAG6h = storetimeRT_2h - storetime4C_BAG_6h,
-  RT2hvs4CBAG1d = storetimeRT_2h - storetime4C_BAG_1d,
-  RT2hvs4CBAG2d = storetimeRT_2h - storetime4C_BAG_2d,
-  RT2hvs4CBAG3d = storetimeRT_2h - storetime4C_BAG_3d,
-  RT2hvs4CBAG1w = storetimeRT_2h - storetime4C_BAG_1w,
-  RT2hvs4CBAG2w = storetimeRT_2h - storetime4C_BAG_2w,
-  RT2hvs4CVACUUM6h = storetimeRT_2h - storetime4C_VACUUM_6h,
-  RT2hvs4CVACUUM1d = storetimeRT_2h - storetime4C_VACUUM_1d,
-  RT2hvs4CVACUUM2d = storetimeRT_2h - storetime4C_VACUUM_2d,
-  RT2hvs4CVACUUM3d = storetimeRT_2h - storetime4C_VACUUM_3d,
-  RT2hvs4CVACUUM1w = storetimeRT_2h - storetime4C_VACUUM_1w,
-  RT2hvs4CVACUUM2w = storetimeRT_2h - storetime4C_VACUUM_2w,
+  RT6hvsRT2h = storetimeRT_6h - storetimeRT_2h,
+  RT1dvsRT2h = storetimeRT_1d - storetimeRT_2h,
+  RT2dvsRT2h = storetimeRT_2d - storetimeRT_2h,
+  RT3dvsRT2h = storetimeRT_3d - storetimeRT_2h,
+  RT1wvsRT2h = storetimeRT_1w - storetimeRT_2h,
+  RT2wvsRT2h = storetimeRT_2w - storetimeRT_2h,
+  BAG6hvsRT2h = storetimeBAG_6h - storetimeRT_2h,
+  BAG1dvsRT2h = storetimeBAG_1d - storetimeRT_2h,
+  BAG2dvsRT2h = storetimeBAG_2d - storetimeRT_2h,
+  BAG3dvsRT2h = storetimeBAG_3d - storetimeRT_2h,
+  BAG1wvsRT2h = storetimeBAG_1w - storetimeRT_2h,
+  BAG2wvsRT2h = storetimeBAG_2w - storetimeRT_2h,
+  VACUUM6hvsRT2h = storetimeVACUUM_6h - storetimeRT_2h,
+  VACUUM1dvsRT2h = storetimeVACUUM_1d - storetimeRT_2h,
+  VACUUM2dvsRT2h = storetimeVACUUM_2d - storetimeRT_2h,
+  VACUUM3dvsRT2h = storetimeVACUUM_3d - storetimeRT_2h,
+  VACUUM1wvsRT2h = storetimeVACUUM_1w - storetimeRT_2h,
+  VACUUM2wvsRT2h = storetimeVACUUM_2w - storetimeRT_2h,
+  `4CBAG6hvsRT2h` = storetime4C_BAG_6h - storetimeRT_2h,
+  `4CBAG1dvsRT2h` = storetime4C_BAG_1d - storetimeRT_2h,
+  `4CBAG2dvsRT2h` = storetime4C_BAG_2d- storetimeRT_2h,
+  `4CBAG3dvsRT2h` = storetime4C_BAG_3d - storetimeRT_2h,
+  `4CBAG1wvsRT2h` = storetime4C_BAG_1w- storetimeRT_2h,
+  `4CBAG2wvsRT2h` = storetime4C_BAG_2w - storetimeRT_2h,
+  `4CVACUUM6hvsRT2h` = storetime4C_VACUUM_6h - storetimeRT_2h,
+  `4CVACUUM1dvsRT2h` = storetime4C_VACUUM_1d- storetimeRT_2h,
+  `4CVACUUM2dvsRT2h` = storetime4C_VACUUM_2d - storetimeRT_2h,
+  `4CVACUUM3dvsRT2h` = storetime4C_VACUUM_3d - storetimeRT_2h,
+  `4CVACUUM1wvsRT2h` = storetime4C_VACUUM_1w - storetimeRT_2h,
+  `4CVACUUM2wvsRT2h` = storetime4C_VACUUM_2w - storetimeRT_2h,
   levels = dsgn)
 fit <- contrasts.fit(fit, contrasts = contr_mat)
 fit <- eBayes(fit)
@@ -457,119 +453,30 @@ tmp <- data.frame(
     coef = fit$coefficient,
     pvalue = fit$p.value,
     adjp = adjp,
-    significant = adjp < p.cut & abs(fit$coefficient) > m.cut
+    significant = adjp < p.cut & abs(fit$coefficient) > m.cut,
+    check.names = FALSE
 )
-tmp$avg.RT2h <- rowMeans(log2(assay(std_res, "normalized_filled_imputed")
-                              [, std_res$storage_time == "RT_2h"]))
-tmp$avg.RT6h <- rowMeans(log2(assay(std_res, "normalized_filled_imputed")
-                              [, std_res$storage_time == "RT_6h"]))
-tmp$avg.RT1d <- rowMeans(log2(assay(std_res, "normalized_filled_imputed")
-                              [, std_res$storage_time == "RT_1d"]))
-tmp$avg.RT2d <- rowMeans(log2(assay(std_res, "normalized_filled_imputed")
-                              [, std_res$storage_time == "RT_2d"]))
-tmp$avg.RT3d <- rowMeans(log2(assay(std_res, "normalized_filled_imputed")
-                              [, std_res$storage_time == "RT_3d"]))
-tmp$avg.RT1w <- rowMeans(log2(assay(std_res, "normalized_filled_imputed")
-                              [, std_res$storage_time == "RT_1w"]))
-tmp$avg.RT2w <- rowMeans(log2(assay(std_res, "normalized_filled_imputed")
-                              [, std_res$storage_time == "RT_2w"]))
-tmp$avg.BAG6h <- rowMeans(log2(assay(std_res, "normalized_filled_imputed")
-                              [, std_res$storage_time == "BAG_6h"]))
-tmp$avg.BAG1d <- rowMeans(log2(assay(std_res, "normalized_filled_imputed")
-                              [, std_res$storage_time == "BAG_1d"]))
-tmp$avg.BAG2d <- rowMeans(log2(assay(std_res, "normalized_filled_imputed")
-                              [, std_res$storage_time == "BAG_2d"]))
-tmp$avg.BAG3d <- rowMeans(log2(assay(std_res, "normalized_filled_imputed")
-                              [, std_res$storage_time == "BAG_3d"]))
-tmp$avg.BAG1w <- rowMeans(log2(assay(std_res, "normalized_filled_imputed")
-                              [, std_res$storage_time == "BAG_1w"]))
-tmp$avg.BAG2w <- rowMeans(log2(assay(std_res, "normalized_filled_imputed")
-                              [, std_res$storage_time == "BAG_2w"]))
-tmp$avg.VACUUM6h <- rowMeans(log2(assay(std_res, "normalized_filled_imputed")
-                              [, std_res$storage_time == "VACUUM_6h"]))
-tmp$avg.VACUUM1d <- rowMeans(log2(assay(std_res, "normalized_filled_imputed")
-                              [, std_res$storage_time == "VACUUM_1d"]))
-tmp$avg.VACUUM2d <- rowMeans(log2(assay(std_res, "normalized_filled_imputed")
-                              [, std_res$storage_time == "VACUUM_2d"]))
-tmp$avg.VACUUM3d <- rowMeans(log2(assay(std_res, "normalized_filled_imputed")
-                              [, std_res$storage_time == "VACUUM_3d"]))
-tmp$avg.VACUUM1w <- rowMeans(log2(assay(std_res, "normalized_filled_imputed")
-                              [, std_res$storage_time == "VACUUM_1w"]))
-tmp$avg.VACUUM2w <- rowMeans(log2(assay(std_res, "normalized_filled_imputed")
-                              [, std_res$storage_time == "VACUUM_2w"]))
-tmp$avg.4CBAG6h <- rowMeans(log2(assay(std_res, "normalized_filled_imputed")
-                              [, std_res$storage_time == "4C_BAG_6h"]))
-tmp$avg.4CBAG1d <- rowMeans(log2(assay(std_res, "normalized_filled_imputed")
-                              [, std_res$storage_time == "4C_BAG_1d"]))
-tmp$avg.4CBAG2d <- rowMeans(log2(assay(std_res, "normalized_filled_imputed")
-                              [, std_res$storage_time == "4C_BAG_2d"]))
-tmp$avg.4CBAG3d <- rowMeans(log2(assay(std_res, "normalized_filled_imputed")
-                              [, std_res$storage_time == "4C_BAG_3d"]))
-tmp$avg.4CBAG1w <- rowMeans(log2(assay(std_res, "normalized_filled_imputed")
-                              [, std_res$storage_time == "4C_BAG_1w"]))
-tmp$avg.4CBAG2w <- rowMeans(log2(assay(std_res, "normalized_filled_imputed")
-                              [, std_res$storage_time == "4C_BAG_2w"]))
-tmp$avg.4CVACUUM6h <- rowMeans(log2(assay(std_res, "normalized_filled_imputed")
-                              [, std_res$storage_time == "4C_VACUUM_6h"]))
-tmp$avg.4CVACUUM1d <- rowMeans(log2(assay(std_res, "normalized_filled_imputed")
-                              [, std_res$storage_time == "4C_VACUUM_1d"]))
-tmp$avg.4CVACUUM2d <- rowMeans(log2(assay(std_res, "normalized_filled_imputed")
-                              [, std_res$storage_time == "4C_VACUUM_2d"]))
-tmp$avg.4CVACUUM3d <- rowMeans(log2(assay(std_res, "normalized_filled_imputed")
-                              [, std_res$storage_time == "4C_VACUUM_3d"]))
-tmp$avg.4CVACUUM1w <- rowMeans(log2(assay(std_res, "normalized_filled_imputed")
-                              [, std_res$storage_time == "4C_VACUUM_1w"]))
-tmp$avg.4CVACUUM2w <- rowMeans(log2(assay(std_res, "normalized_filled_imputed")
-                              [, std_res$storage_time == "4C_VACUUM_2w"]))
-rowData(std_res) <- cbind(rowData(std_res), tmp)
+avgs <- lapply(unique(std_res$storage_time), function(z) {
+    rowMeans(log2(assay(
+        std_res, "normalized_filled_imputed")[, std_res$storage_time == z]))
+})
+avgs <- do.call(cbind, avgs)
+colnames(avgs) <- paste0("avg.", sub("_", "", unique(std_res$storage_time)))
+rowData(std_res) <- cbind(rowData(std_res), tmp, avgs)
 ```
 
-We plot then the distribution of p-values, both raw and adjusted for all 
-samples stored at room temperature:
-
-```{r standards-p-value-histogram, echo = FALSE, fig.path = IMAGE_PATH, fig.width = 7 * phi, fig.cap = "Distribution of raw (left) and adjusted p-values (right) for all 6 comparisons."}
-par(mfrow = c(3, 4))
-hist(rowData(std_res)$pvalue.RT2hvsRT6h, breaks = 64, xlab = "p value",
-     main = "RT for 2h vs RT for 6h")
-hist(rowData(std_res)$adjp.RT2hvsRT6h, breaks = 64,
-     xlab = expression(p[BH]~value),
-     main = "RT for 2h vs RT for 6h")
-hist(rowData(std_res)$pvalue.RT2hvsRT1d, breaks = 64, xlab = "p value",
-     main = "RT for 2h vs RT for 1d")
-hist(rowData(std_res)$adjp.RT2hvsRT1d, breaks = 64,
-     xlab = expression(p[BH]~value),
-     main = "RT for 2h vs RT for 1d")
-hist(rowData(std_res)$pvalue.RT2hvsRT2d, breaks = 64, xlab = "p value",
-     main = "RT for 2h vs RT for 2d")
-hist(rowData(std_res)$adjp.RT2hvsRT2d, breaks = 64,
-     xlab = expression(p[BH]~value),
-     main = "RT for 2h vs RT for 2d")
-hist(rowData(std_res)$pvalue.RT2hvsRT3d, breaks = 64, xlab = "p value",
-     main = "RT for 2h vs RT for 3d")
-hist(rowData(std_res)$adjp.RT2hvsRT3d, breaks = 64,
-     xlab = expression(p[BH]~value),
-     main = "RT for 2h vs RT for 3d")
-hist(rowData(std_res)$pvalue.RT2hvsRT1w, breaks = 64, xlab = "p value",
-     main = "RT for 2h vs RT for 1w")
-hist(rowData(std_res)$adjp.RT2hvsRT1w, breaks = 64,
-     xlab = expression(p[BH]~value),
-     main = "RT for 2h vs RT for 1w")
-hist(rowData(std_res)$pvalue.RT2hvsRT2w, breaks = 64, xlab = "p value",
-     main = "RT for 2h vs RT for 2w")
-hist(rowData(std_res)$adjp.RT2hvsRT2w, breaks = 64,
-     xlab = expression(p[BH]~value),
-     main = "RT for 2h vs RT for 2w")
-
-```
-
-Thus, most of the metabolites were identified to have significantly different
-concentrations between the comparison. A table with the number of significant
-metabolites is shown below.
+A table with the number of significant metabolites is shown below.
 
 ```{r table-sig, echo = FALSE, results = "asis"}
-tab <- colSums(as.matrix(rowData(std_res)[, grep("significant", 
+tab <- colSums(as.matrix(rowData(std_res)[, grep("significant",
                                              colnames(rowData(std_res)))]))
-pandoc.table(tab, style = "rmarkdown",
+tab <- data.frame(comparison = sub("significant.", "", names(tab)), count = tab)
+tab$storage <- c(rep("RT", 6), rep("BAG", 6), rep("VACUUM", 6),
+                 rep("4C_BAG", 6), rep("4C_VACUUM", 6))
+tab$time <- rep(c("6h", "1d", "2d", "3d", "1w", "2w"), 5)
+rownames(tab) <- NULL
+pandoc.table(tab[, c("comparison", "storage", "time", "count")],
+             style = "rmarkdown",
              caption = paste0("Number of significant features of the in",
                               " total", nrow(std_res), "analyzed features."))
 ```
@@ -577,21 +484,115 @@ pandoc.table(tab, style = "rmarkdown",
 The number of significant features is then shown in a barplot:
 
 ```{r sig-features-barplot, echo = FALSE, fig.path = IMAGE_PATH, fig.width = 10 * phi, fig.cap = "Amount of significant features per storage condition over time"}
-
-pd <- read.table("data/sts_semi_sig.txt", sep = "\t", as.is = TRUE, header = TRUE)
-library("ggplot2")
-ggplot(pd, aes(fill=storage, y=significant, x=time)) + 
-    geom_bar(position="dodge", stat="identity") +
-  scale_fill_brewer(palette="Set1")
+tab_time <- tab
+tab_time$time <- factor(tab_time$time,
+                        levels = c("6h", "1d", "2d", "3d", "1w", "2w"))
+tab_time <- tab_time[order(as.integer(tab_time$time)), ]
+x <- barplot(tab_time$count, space = c(rep(0, 5), 0.2, rep(0, 4), 0.2,
+                                       rep(0, 4), 0.2, rep(0, 4), 0.2,
+                                       rep(0, 4), 0.2, rep(0, 4)),
+             col = col_storage[tab_time$storage], ylab = "count",
+             main = "Number of significant features")
+legend("topleft", pch = 22, col = "black", pt.bg = col_storage,
+       legend = names(col_storage))
+grid(nx = NA, ny = NULL)
+mtext(at = vapply(split(x, tab_time$time), mean, numeric(1)),
+      text = levels(tab_time$time), side = 1, cex = par("cex.axis"),
+      line = 1.5)
 ```
-Samples that were stored at room temperature show the least change in the 
+
+Samples that were stored at room temperature show the least change in the
 beginning of storage duration, but after one and two weeks, those samples
 have the highest number of significant features when compared to the samples
-that were freezed directly after drying. 
+that were freezed directly after drying.
+
+In addition we create a PCA plot after averaging the replicates.
+
+```{r average-replicates, echo = FALSE}
+#' Average
+averageSE <- function(x, column = character(), mainAssay = character()) {
+    if (!column %in% colnames(colData(x)))
+        stop("Column '", "' not found in 'colData' of 'x'")
+    f <- factor(colData(x)[, column], levels = unique(colData(x)[, column]))
+    ## new colData: take the first element for each replicate.
+    cd <- colData(x)[match(levels(f), f), ]
+    rownames(cd) <- cd[, column]
+    ## loop over the assays and average them.
+    a <- lapply(assays(x), function(z) {
+        z <- split.data.frame(t(z), f = f)
+        z <- do.call(cbind, lapply(z, colMeans, na.rm = TRUE))
+        z[is.na(z)] <- NA
+        z
+    })
+    if (length(mainAssay)) {
+        tmp <- split.data.frame(t(assay(x, mainAssay)), f = f)
+        tmp <- do.call(cbind, lapply(tmp, function(y) {
+            apply(y, MARGIN = 2, FUN = sd, na.rm = TRUE)
+        }))
+        tmp[is.na(tmp)] <- NA
+        a[[paste0(mainAssay, "_sd")]] <- tmp
+    }
+    SummarizedExperiment(assays = a, rowData = rowData(x),
+                         colData = cd, metadata = metadata(x))
+}
+## Average technical replicates:
+std_res$storage_time <- paste0(std_res$storage, "_", std_res$time)
+std_res_avg <- averageSE(std_res, column = "storage_time")
+```
+
+```{r standards-pca-avg, echo = FALSE}
+pc <- prcomp(t(log2(assay(std_res_avg, "normalized_filled_imputed"))),
+                 center = TRUE, scale. = FALSE)
+```
+
+```{r standards-pca-plot-avg, fig.path = IMAGE_PATH, fig.cap = "PCA of the samples based on intensities of known compounds.", fig.width = 7 * phi, fig.height = 7, echo = FALSE}
+par(mfrow = c(1, 2))
+plot_pca(pc, col = "#00000080",
+         bg = paste0(col_storage[as.character(std_res_avg$storage)], 90),
+         pc_x = 1, pc_y = 2, pch = 21)
+plot_pca(pc, col = "#00000080",
+         bg = paste0(col_storage[as.character(std_res_avg$storage)], 90),
+         pc_x = 3, pc_y = 4, pch = 21)
+legend("topleft", col = col_storage, legend = names(col_storage),
+       title = "storage", pch = 16, ncol = 2)
+```
+
+In the PC1 plot, we see a separation of samples stored at room temperture (RT),
+samples that were stored under other circumstances cannot be distinguished from
+the PCA plots.
+
+```{r standards-pca-plot-time-avg, fig.path = IMAGE_PATH, fig.cap = "PCA of the samples based on intensities of known compounds.", fig.width = 7 * phi, fig.height = 7, echo = FALSE}
+par(mfrow = c(1, 2))
+pchs <- 21:25
+names(pchs) <- c("RT", "BAG", "4C_BAG", "VACUUM", "4C_VACUUM")
+plot_pca(pc, col = "#00000080",
+         bg = paste0(col_time[as.character(std_res_avg$time)], 90),
+         pc_x = 1, pc_y = 2, pch = pchs[std_res_avg$storage])
+plot_pca(pc, col = "#00000080",
+         bg = paste0(col_time[as.character(std_res_avg$time)], 90),
+         pc_x = 3, pc_y = 4, pch = pchs[std_res_avg$storage])
+legend("topleft", pch = pchs, legend = names(pchs),
+       title = "storage", ncol = 2)
+```
+
+At last we create also a heatmap of the coefficients.
+
+```{r standards-heatmap-coefficients, echo = FALSE, fig.path = IMAGE_PATH, fig.height = 8 * phi, fig.width = 8, fig.cap = "Heatmap of coefficients from the comparisons of each storage timepoint against 2h RT. For better visibility the color bar was cut at a value of 5."}
+coefs <- as.matrix(rowData(std_res)[, grep("coef", colnames(rowData(std_res)))])
+anns <- data.frame(storage = rep(c("RT", "BAG", "VACUUM",
+                                   "4C_BAG", "4C_VACUUM"), each = 6),
+                   time = rep(c("6h", "1d", "2d", "3d", "1w", "2w"), 5))
+rownames(anns) <- colnames(coefs)
+rownames(coefs) <- rowData(std_res)$name
+
+brks <- seq(-5, 5, length.out = 101)
+pheatmap(coefs, show_colname = FALSE, annotation_col = anns, breaks = brks,
+         annotation_colors = list(storage = col_storage, time = col_time))
+```
+
 
 # Session information
 
 ```{r}
 sessionInfo()
 ```
-
