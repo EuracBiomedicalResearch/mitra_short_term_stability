@@ -395,6 +395,8 @@ whereas after two weeks the samples stored in plastic bags at room temperature
 show th highest peak. Interestingly, after one week the amount of significant
 features was lower in all conditions compared to the amount after 3 days.
 
+In addition we create a PCA plot after averaging the replicates.
+
 ```{r average-replicates, echo = FALSE}
 #' Average
 averageSE <- function(x, column = character(), mainAssay = character()) {
@@ -444,7 +446,6 @@ legend("topleft", col = col_storage, legend = names(col_storage),
        title = "storage", pch = 16, ncol = 2)
 ```
 
-Add description
 
 ```{r standards-pca-plot-time-avg, fig.path = IMAGE_PATH, fig.cap = "PCA of the samples based on intensities of known compounds.", fig.width = 7 * phi, fig.height = 7, echo = FALSE}
 par(mfrow = c(1, 2))
