@@ -1,0 +1,609 @@
+---
+title: "Differential abundance analysis, semi-targeted approach"
+subtitle: "Negative polarity"
+author: "Christa Malfertheiner"
+date: "12 November 2021"
+output:
+  BiocStyle::html_document:
+    toc: true
+    number_sections: false
+    toc_float: true
+bibliography: references.bib
+csl: biomed-central.csl
+---
+
+```{r setup, echo = FALSE, results = "asis", warning = FALSE}
+library(BiocStyle)
+BiocStyle::markdown()
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, dev = c("png", "pdf"))
+```
+
+```{r parameters, echo = FALSE, warning = FALSE}
+## Set general parameters
+polarity <- "NEG" # specify "POS" or "NEG"
+p.cut <- 0.05     # cut-off for significance.
+m.cut <- 0.7      # cut-off for log2 fold change
+set.seed(123)
+## Setting golden ratio to save images
+phi <- (1+sqrt(5))/2
+FILE_NAME <- "sts_targeted_neg"
+## Define paths:
+IMAGE_PATH <- paste0("images/", FILE_NAME, "/")
+if (dir.exists(IMAGE_PATH)) unlink(IMAGE_PATH, recursive = TRUE, force = TRUE)
+dir.create(IMAGE_PATH, recursive = TRUE, showWarnings = FALSE)
+RDATA_PATH <- paste0("data/RData/", FILE_NAME, "/")
+dir.create(RDATA_PATH, recursive = TRUE, showWarnings = FALSE)
+RESULT_PATH <- paste0("data/results/", FILE_NAME, "/")
+dir.create(RESULT_PATH, recursive = TRUE, showWarnings = FALSE)
+```
+
+# Introduction
+
+In this document we perform the differential abundance analysis of the features
+from short term stability data collected with mitra tips, with the aim of
+finding significant storage-related features. This task is performed by
+hypothesis testing, where we try to identify which metabolites have the most
+different concentrations.
+We follow a semi-targeted approach, where we look at concentrations of features
+corresponding to lab-internal set of standards.
+
+
+# Data import
+
+First, we load the required packages and the data, after preprocessing and
+normalization. The end result of these steps is a `SummarizedExperiment` that
+contains aligned data, where features are grouped (after correspondence), and
+that have undergone gap filling, normalization by the median, linear fitting and
+per-feature between-batch normalization to remove any unwanted variability.
+The `SummarizedExperiment` lets us store all the information regarding the
+normalization steps in the form of `assays`, which we are still able to access
+to proceed with the analysis.
+
+```{r load-data, echo = FALSE, warning = FALSE}
+library(xcms)
+library(limma)
+library(pheatmap)
+library(writexl)
+library(SummarizedExperiment)
+library(CompMetaboTools)
+library(RColorBrewer)
+library(pander)
+load("data/RData/sts_normalization_neg/res_neg.RData")
+```
+
+It is important now to remove the `POOL` samples from the dataset, because the
+analysis has to be performed only on study samples; the `POOL` samples, though
+are still required to evaluate the goodness of the detected features, therefore
+they will be stored in a separate `SummarizedExperiment` object that can be
+accessed when needed.
+
+We also assign the colours as seen before.
+
+```{r split-qc, echo = TRUE}
+res_qc <- res_neg[, res_neg$storage == "QC"]
+res_neg <- res_neg[, res_neg$storage != "QC"]
+res_neg$storage <- factor(as.character(res_neg$storage))
+## Define colors for the groups.
+col_storage <- brewer.pal(12, name = "Paired")[c(6, 2, 10, 1, 9, 7)]
+names(col_storage) <- c("RT",           # red
+                        "BAG",          # blue
+                        "VACUUM",       # purple
+                        "4C_BAG",       # light blue
+                        "4C_VACUUM",    # light purple
+                        "QC")           # light orange
+col_time <- brewer.pal(9, name = "OrRd")[c(3, 4, 5, 6, 7, 8, 9, 1)]
+names(col_time) <- c("2h",
+                     "6h",
+                     "1d",
+                     "2d",
+                     "3d",
+                     "1w",
+                     "2w",
+                     "QC")
+## Setting golden ratio to save images
+phi <- (1+sqrt(5))/2
+```
+
+The samples used in this analysis are listed below.
+
+```{r, echo = FALSE, results = "asis"}
+tab <- colData(res_neg)[, c("storage", "time")]
+pandoc.table(as.data.frame(tab), style = "rmarkdown",
+             caption = "Samples used in this analysis")
+```
+
+
+# Semi-targeted analysis
+
+First, we restrict the analysis to a set of known compounds, whose
+mass-to-charge ratio and retention time have been previously measured from the
+pure standards. To start, a table of standards is loaded, then
+a search in the m/z and retention time dimensions is carried out to match the
+features found before to these compounds. Subsequently, EICs for all the
+assigned features are plotted and visually inspected: this step is necessary to
+accurately pair the detected peaks to the standards. When the list of assigned
+standards is complete, we perform a differential abundance analysis on the
+subset of features.
+
+First, we load the information on the standards, with the aim of identifying
+features potentially matching these and plotting the EICs for all of these.
+
+```{r known-cmps, message = FALSE, warning = FALSE}
+## Extract known compunds
+library("MetaboCoreUtils")
+library(Rdisop)
+std_info <- read.table(
+    "https://raw.githubusercontent.com/EuracBiomedicalResearch/lcms-standards/master/data/standards_dilution.txt",
+    sep = "\t", header = TRUE, as.is = TRUE)
+std_info <- std_info[!is.na(std_info[, "NEG"]), ]
+rownames(std_info) <- 1:nrow(std_info)
+std_info$exact_mass = NA
+std_info$mz_ion = NA
+for (i in seq(nrow(std_info))) {
+    if (grepl("C", std_info$formula[i]))
+        std_info$exact_mass[i] <- getMolecule(std_info$formula[i])$exactmass
+    else
+        std_info$exact_mass[i] = as.numeric(std_info$formula[i])
+    ## Calculate also the m/z
+    std_info$mz_ion[i] <- mass2mz(
+        std_info$exact_mass[i], adduct = std_info[i, "NEG"])[1, 1]
+}
+std_info <- std_info[!is.na(std_info$mz_ion), ]
+std_info <- std_info[order(std_info$name), ]
+dr <- paste0(IMAGE_PATH, "/standards/")
+dir.create(dr, recursive = TRUE, showWarnings = FALSE)
+##load data_neg
+load("data/RData/sts_normalization_neg/data_neg_filled.RData")
+## Subset to the samples we're currently analyzing.
+tmp <- filterFile(data_neg, match(res_neg$mzML_file, data_neg$mzML_file),
+                  keepFeatures = TRUE)
+```
+
+We next match features from our data set against m/z of the expected ions and
+the retention times for the set of lab-internal standards, extract their ion
+chromatogram and plot these.
+
+```{r}
+## Match feature's m/z and rt values against expecte values for standards.
+library(MetaboAnnotation)
+register(SerialParam())
+rowData(res_neg)$feature_id <- row.names(res_neg)
+par <- MzRtParam(tolerance = 0, ppm = 20, toleranceRt = 30)
+std_match <- matchMz(res_neg, std_info, param = par,
+                     mzColname = c("mzmed", "mz_ion"),
+                     rtColname = c("rtmed", "RT"))
+## Subset to matching features.
+std_match <- std_match[whichQuery(std_match)]
+std_match <- pruneTarget(std_match)
+chrs <- featureChromatograms(tmp, features = std_match$feature_id,
+                             expandRt = 7, filled = TRUE)
+sample_colors <- col_storage[tmp$storage]
+for (i in seq_len(length(std_match$feature_id))) {
+    chr <- chrs[i, ]
+    pks <- chromPeaks(chr)
+    fl <- std_match$target_name[i]
+    png(paste0(dr, fl, "-", std_match$feature_id[i], ".png"),
+        width = 10, height = 8, units = "cm", res = 300, pointsize = 6)
+    plot(chr, col = "#00000040",
+         peakCol = paste0(sample_colors[pks[, "column"]], 50),
+         peakBg = paste0(sample_colors[pks[, "column"]], 10))
+    abline(v = std_match$target_RT[i])
+    legend("topleft", legend = c(std_match$feature_id[i], fl,
+                                 paste0("rt: ", std_match$target_RT[i]),
+                                 paste0("mz: ", std_match$target_mz_ion[i])))
+    dev.off()
+}
+```
+
+The EICs have been manually inspected and the best matching feature has been
+manually assigned to the corresponding standard.
+
+```{r assign-feature-metabolite, echo = FALSE, warning = FALSE, message = FALSE}
+## This is the tricky manual thing:
+## - Go through all plots for all standards and if there is one feature
+##   that clearly matches (i.e. retention time close to the expected retention
+##   time and a single peak present in the wider rt range) assign it.
+to_keep <- c(FT01080 = "1,5-anhydro D-glucitol",
+             FT00582 = "1-Methylhistidine",
+             FT00731 = "1-Methyluric acid",
+             FT00548 = "1-Methylxanthine",
+             FT00092 = "2-Hydroxybutyric acid",
+             FT00092 = "3-Hydroxybutyric acid", #same as 2-Hydroxybutric acid
+             FT00582 = "3-Methylhistidine", ## same as 1-Methylhistidine
+             FT00548 = "3-Methylxanthine", #same as 1-Methylxanthine
+             FT00190 = "5-Oxoproline",
+             FT00548 = "7-Methylxanthine", #same as 1- and 3-Methylxanthine
+             FT02121 = "8-Oxo-2-Deoxyguanosine",
+             FT00213 = "Acetylalanine",
+             FT01859 = "Acetyl-Glucosamine",
+             FT00139 = "Acetylglyine",
+             FT00845 = "Acetylmethionine",
+             FT02676 = "Acetylneuraminic Acid",
+             FT00273 = "Adenine",
+             FT02758 = "Adenosine",
+             FT05197 = "ADP",
+             FT00461 = "Allantoin",
+             FT00130 = "alpha-ketoisovaleric acid",
+             FT04434 = "alpha-Lactose",
+             FT10904 = "AMP",
+             FT00639 = "Arginine",
+             FT00228 = "Asparagine",
+             FT01314 = "Carnosine",
+             FT07630 = "CDP-Choline",
+             FT05601 = "CDP-ethanolamine",
+             FT00860 = "Citric acid",
+             FT00652 = "Citrulline",
+             FT04520 = "Corticosterone",
+             FT05197 = "dGDP", #same as ADP
+             FT00088 = "Dimethylglycine",
+             FT00706 = "Fructose", # strange signal shift
+             FT00734 = "Galactitol", # same as sorbitol
+             FT00908 = "Gluconic Acid",
+             FT01295 = "Glucosamine",
+             FT01307 = "Glucose",
+             FT00886 = "Glucuronic Acid",
+             FT00356 = "Glutamine",
+             FT00227 = "Glutaric acid",
+             FT09271 = "Glutathione Oxidized", # same as Glu. Reduced
+             FT09271 = "Glutathione Reduced", # same as Glu. Oxidized
+             FT00586 = "Glyceraldehyde 2-phosphate",
+             FT00096 = "Glyceric Acid",
+             FT00039 = "Glycolic acid",
+             FT02121 = "Guanosine", #same as 8-Oxo-2-Deoxyguanosine
+             FT00433 = "Histidine",
+             FT00733 = "Homovanillic acid",
+             FT00214 = "Hydroxyproline",
+             FT00284 = "Hypoxanthine",
+             FT01029 = "Indoleacetic acid",
+             FT01872 = "Inosine",
+             FT00858 = "Isocitric Acid",
+             FT00217 = "Isoleucine",
+             FT00474 = "Isovalerylglycine",
+             FT00207 = "Ketoleucine",
+             FT00064 = "Lactic acid",
+             FT00240 = "L-Aspartic Acid",
+             FT00217 = "Leucine", #same as Isoleucine
+             FT00368 = "L-Glutamic Acid",
+             FT00359 = "Lysine",
+             FT01307 = "Mannose", # same as Fructose and Glucose
+             FT00534 = "Methioninesulfoxide",
+             FT01308 = "Myo-Inositol",
+             FT00213 = "N-Acetyl-beta-alanine",
+             FT00638 = "N-Acetylornithine",
+             FT10276 = "NAD",
+             FT00682 = "N-Formyl-L-methionine",
+             FT01214 = "Pantothenic Acid",
+             FT00285 = "Phenylacetic acid",
+             FT00535 = "Phenylalanine",
+             FT00526 = "Phenylpyruvic acid",
+             FT00061 = "Pyruvic acid",
+             FT00558 = "Quinolinic acid",
+             FT00396 = "Ribose",
+             FT04346 = "SAH",
+             FT00308 = "Salicylic acid",
+             FT00989 = "Sebacic acid",
+             FT00093 = "Serine",
+             FT00734 = "Sorbitol",
+             FT04232 = "Sphingosine-1-phosphate",
+             FT00146 = "Succinic Acid",
+             FT00462 = "Succinylacetone",
+             FT00171 = "Taurine",
+             FT00284 = "Threonic Acid",
+             FT00152 = "Threonine",
+             FT01014 = "Tryptophan",
+             FT02243 = "Uridine",
+             FT00407 = "Xanthine")
+std_match <- filterMatches(std_match, queryValue = names(to_keep),
+                           targetValue = to_keep,
+                           queryColname = "feature_id",
+                           targetColname = "target_name",
+                           keep = TRUE)
+std_match <- std_match[whichQuery(std_match)]
+std_match <- pruneTarget(std_match)
+md <- as.data.frame(matchedData(std_match, c("feature_id", "target_name",
+                                             "target_HMDB.code")))
+md <- split(md, md$feature_id)
+md <- do.call(rbind, lapply(md, function(z) {
+    tmp <- data.frame(ft = z$feature_id[1L])
+    tmp$name <- paste0(z$target_name, collapse = ";")
+    tmp$HMDB <- paste0(z$target_HMDB.code, collapse = ";")
+    tmp
+}))
+```
+
+A total of `r sum(nrow(md))` standards have been identified. The features
+identified and the corresponding metabolite are summarized in this table:
+
+```{r result-table-ft-std, echo = FALSE, results = "asis"}
+## Write result table
+md <- md[order(md$name), ]
+pandoc.table(md[, c("ft", "name")], style = "rmarkdown",
+             caption = "Features assigned to known compounds")
+```
+
+Next, only the features assigned to the standards are taken into consideration
+and are subsetted in the `std_res` object.
+
+```{r std-subset, echo = FALSE}
+std_res <- query(std_match)
+rowData(std_res) <- cbind(rowData(std_res),
+                          md[rownames(std_res), c("name", "HMDB")])
+```
+
+The subsetting reduced the number of features to `r length(std_res)`.
+
+A PCA analysis is then performed on the subset to verify whether anything has
+changed and if any similarities among the samples are visible or not.
+
+```{r standards-pca-all, echo = FALSE}
+pc <- prcomp(t(log2(assay(std_res, "normalized_filled_imputed"))),
+                 center = TRUE, scale. = FALSE)
+```
+
+```{r standards-pca-plot, fig.path = IMAGE_PATH, fig.cap = "PCA of the samples based on intensities of known compounds.", fig.width = 7 * phi, fig.height = 7, echo = FALSE}
+par(mfrow = c(1, 2))
+plot_pca(pc, col = "#00000080",
+         bg = paste0(col_storage[as.character(std_res$storage)], 90),
+         pc_x = 1, pc_y = 2, pch = 21)
+plot_pca(pc, col = "#00000080",
+         bg = paste0(col_storage[as.character(std_res$storage)], 90),
+         pc_x = 3, pc_y = 4, pch = 21)
+legend("topleft", col = col_storage, legend = names(col_storage),
+       title = "storage", pch = 16, ncol = 2)
+```
+
+In the PC1 plot, we see a separation of samples stored at room temperture (RT),
+samples that were stored under other circumstances cannot be distinguished from
+the PCA plots.
+
+```{r standards-pca-plot-time, fig.path = IMAGE_PATH, fig.cap = "PCA of the samples based on intensities of known compounds.", fig.width = 7 * phi, fig.height = 7, echo = FALSE}
+par(mfrow = c(1, 2))
+pchs <- 21:25
+names(pchs) <- c("RT", "BAG", "4C_BAG", "VACUUM", "4C_VACUUM")
+plot_pca(pc, col = "#00000080",
+         bg = paste0(col_time[as.character(std_res$time)], 90),
+         pc_x = 1, pc_y = 2, pch = pchs[std_res$storage])
+plot_pca(pc, col = "#00000080",
+         bg = paste0(col_time[as.character(std_res$time)], 90),
+         pc_x = 3, pc_y = 4, pch = pchs[std_res$storage])
+legend("topleft", pch = pchs, legend = names(pchs),
+       title = "storage", ncol = 2)
+```
+
+
+
+## Heatmap
+
+To visualize the intensity of all detected standards across the three matrices,
+we created a heatmap of the known compounds we found in our samples.
+
+```{r heatmap-source-semitargeted, fig.width = 15, fig.height = 13, fig.cap = "Heatmap of known compounds. Note that for better visibility, the color range has been restricted to -5 to 5, thus, differences larger than these values are assigned the extreme colors.", echo = FALSE, fig.path = IMAGE_PATH}
+## Create heatmap
+tmp <- log2(assay(
+    std_res, "normalized_filled_imputed")[rownames(std_res), , drop = FALSE])
+tmp <- tmp - rowMeans(tmp, na.rm = TRUE)
+rownames(tmp) <- rowData(std_res)$name
+colnames(tmp) <- std_res$mzML_file
+ann <- as.data.frame(colData(std_res)[, c("storage", "time")])
+rownames(ann) <- colnames(tmp)
+pm <- pheatmap(tmp, annotation_col = ann, labels_col = colnames(tmp),
+               breaks = seq(-5, 5, length.out = 101),
+               annotation_color = list(storage = col_storage,
+                                       time = col_time),
+               show_colnames = FALSE)
+```
+
+In the heatmap we see two main cluster, the first contains only samples stored
+at room temperature. The second cluster contains all other samples that were 
+stored under other circumstances.
+
+The metabolites also cluster into different group. One cluster contains only
+**AMP, Inosine and Guanosine**, those metabolites are highly present in samples
+that were stored at room temperature compared to the other storage methods.
+
+Now, we start with the differential abundance analysis.
+
+## Differential abundance analysis
+
+We next identify metabolites with significant differences in their abundances
+between the storage conditions. The differential abundance analysis is performed
+on the subset of features that have previously been assigned to the
+standards. We apply feature-wise multiple linear regression using the `lmFit`
+function and we add the matrix defining the contrasts using
+`contrast.fit`. Then, we calculate the p-values with `eBayes`. Subsequently, we
+generate a data frame with the coefficients, the raw and adjusted p-values (we
+apply a Benjamini-Hochberg correction for better control of the false discovery
+rate), the average intensity of signals per sample group and whether or not a
+feature is to be considered significant.
+
+
+```{r analysis}
+## Factor sample source, sex and age
+storage <- factor(std_res$storage)
+time <- factor(std_res$time)
+storetime <- factor(std_res$storage_time)
+## Fit the data to the desired design
+dsgn <- model.matrix(~ 0 + storetime)
+fit <- lmFit(log2(assay(std_res, "normalized_filled_imputed")), design = dsgn)
+## Fit the actual contrasts of interest
+contr_mat <- makeContrasts(
+  RT6hvsRT2h = storetimeRT_6h - storetimeRT_2h,
+  RT1dvsRT2h = storetimeRT_1d - storetimeRT_2h,
+  RT2dvsRT2h = storetimeRT_2d - storetimeRT_2h,
+  RT3dvsRT2h = storetimeRT_3d - storetimeRT_2h,
+  RT1wvsRT2h = storetimeRT_1w - storetimeRT_2h,
+  RT2wvsRT2h = storetimeRT_2w - storetimeRT_2h,
+  BAG6hvsRT2h = storetimeBAG_6h - storetimeRT_2h,
+  BAG1dvsRT2h = storetimeBAG_1d - storetimeRT_2h,
+  BAG2dvsRT2h = storetimeBAG_2d - storetimeRT_2h,
+  BAG3dvsRT2h = storetimeBAG_3d - storetimeRT_2h,
+  BAG1wvsRT2h = storetimeBAG_1w - storetimeRT_2h,
+  BAG2wvsRT2h = storetimeBAG_2w - storetimeRT_2h,
+  VACUUM6hvsRT2h = storetimeVACUUM_6h - storetimeRT_2h,
+  VACUUM1dvsRT2h = storetimeVACUUM_1d - storetimeRT_2h,
+  VACUUM2dvsRT2h = storetimeVACUUM_2d - storetimeRT_2h,
+  VACUUM3dvsRT2h = storetimeVACUUM_3d - storetimeRT_2h,
+  VACUUM1wvsRT2h = storetimeVACUUM_1w - storetimeRT_2h,
+  VACUUM2wvsRT2h = storetimeVACUUM_2w - storetimeRT_2h,
+  `4CBAG6hvsRT2h` = storetime4C_BAG_6h - storetimeRT_2h,
+  `4CBAG1dvsRT2h` = storetime4C_BAG_1d - storetimeRT_2h,
+  `4CBAG2dvsRT2h` = storetime4C_BAG_2d- storetimeRT_2h,
+  `4CBAG3dvsRT2h` = storetime4C_BAG_3d - storetimeRT_2h,
+  `4CBAG1wvsRT2h` = storetime4C_BAG_1w- storetimeRT_2h,
+  `4CBAG2wvsRT2h` = storetime4C_BAG_2w - storetimeRT_2h,
+  `4CVACUUM6hvsRT2h` = storetime4C_VACUUM_6h - storetimeRT_2h,
+  `4CVACUUM1dvsRT2h` = storetime4C_VACUUM_1d- storetimeRT_2h,
+  `4CVACUUM2dvsRT2h` = storetime4C_VACUUM_2d - storetimeRT_2h,
+  `4CVACUUM3dvsRT2h` = storetime4C_VACUUM_3d - storetimeRT_2h,
+  `4CVACUUM1wvsRT2h` = storetime4C_VACUUM_1w - storetimeRT_2h,
+  `4CVACUUM2wvsRT2h` = storetime4C_VACUUM_2w - storetimeRT_2h,
+  levels = dsgn)
+fit <- contrasts.fit(fit, contrasts = contr_mat)
+fit <- eBayes(fit)
+adjp <- apply(fit$p.value, 2, p.adjust, method = "BH")
+tmp <- data.frame(
+    coef = fit$coefficient,
+    pvalue = fit$p.value,
+    adjp = adjp,
+    significant = adjp < p.cut & abs(fit$coefficient) > m.cut,
+    check.names = FALSE
+)
+avgs <- lapply(unique(std_res$storage_time), function(z) {
+    rowMeans(log2(assay(
+        std_res, "normalized_filled_imputed")[, std_res$storage_time == z]))
+})
+avgs <- do.call(cbind, avgs)
+colnames(avgs) <- paste0("avg.", sub("_", "", unique(std_res$storage_time)))
+rowData(std_res) <- cbind(rowData(std_res), tmp, avgs)
+```
+
+A table with the number of significant metabolites is shown below.
+
+```{r table-sig, echo = FALSE, results = "asis"}
+tab <- colSums(as.matrix(rowData(std_res)[, grep("significant",
+                                             colnames(rowData(std_res)))]))
+tab <- data.frame(comparison = sub("significant.", "", names(tab)), count = tab)
+tab$storage <- c(rep("RT", 6), rep("BAG", 6), rep("VACUUM", 6),
+                 rep("4C_BAG", 6), rep("4C_VACUUM", 6))
+tab$time <- rep(c("6h", "1d", "2d", "3d", "1w", "2w"), 5)
+rownames(tab) <- NULL
+pandoc.table(tab[, c("comparison", "storage", "time", "count")],
+             style = "rmarkdown",
+             caption = paste0("Number of significant features of the in",
+                              " total", nrow(std_res), "analyzed features."))
+```
+
+The number of significant features is then shown in a barplot:
+
+```{r sig-features-barplot, echo = FALSE, fig.path = IMAGE_PATH, fig.width = 10 * phi, fig.cap = "Amount of significant features per storage condition over time"}
+tab_time <- tab
+tab_time$time <- factor(tab_time$time,
+                        levels = c("6h", "1d", "2d", "3d", "1w", "2w"))
+tab_time <- tab_time[order(as.integer(tab_time$time)), ]
+x <- barplot(tab_time$count, space = c(rep(0, 5), 0.2, rep(0, 4), 0.2,
+                                       rep(0, 4), 0.2, rep(0, 4), 0.2,
+                                       rep(0, 4), 0.2, rep(0, 4)),
+             col = col_storage[tab_time$storage], ylab = "count",
+             main = "Number of significant features")
+legend("topleft", pch = 22, col = "black", pt.bg = col_storage,
+       legend = names(col_storage))
+grid(nx = NA, ny = NULL)
+mtext(at = vapply(split(x, tab_time$time), mean, numeric(1)),
+      text = levels(tab_time$time), side = 1, cex = par("cex.axis"),
+      line = 1.5)
+```
+
+Samples that were stored at room temperature show the least change in the
+beginning of storage duration, but after one and two weeks, those samples
+have the highest number of significant features when compared to the samples
+that were freezed directly after drying.
+
+In addition we create a PCA plot after averaging the replicates.
+
+```{r average-replicates, echo = FALSE}
+#' Average
+averageSE <- function(x, column = character(), mainAssay = character()) {
+    if (!column %in% colnames(colData(x)))
+        stop("Column '", "' not found in 'colData' of 'x'")
+    f <- factor(colData(x)[, column], levels = unique(colData(x)[, column]))
+    ## new colData: take the first element for each replicate.
+    cd <- colData(x)[match(levels(f), f), ]
+    rownames(cd) <- cd[, column]
+    ## loop over the assays and average them.
+    a <- lapply(assays(x), function(z) {
+        z <- split.data.frame(t(z), f = f)
+        z <- do.call(cbind, lapply(z, colMeans, na.rm = TRUE))
+        z[is.na(z)] <- NA
+        z
+    })
+    if (length(mainAssay)) {
+        tmp <- split.data.frame(t(assay(x, mainAssay)), f = f)
+        tmp <- do.call(cbind, lapply(tmp, function(y) {
+            apply(y, MARGIN = 2, FUN = sd, na.rm = TRUE)
+        }))
+        tmp[is.na(tmp)] <- NA
+        a[[paste0(mainAssay, "_sd")]] <- tmp
+    }
+    SummarizedExperiment(assays = a, rowData = rowData(x),
+                         colData = cd, metadata = metadata(x))
+}
+## Average technical replicates:
+std_res$storage_time <- paste0(std_res$storage, "_", std_res$time)
+std_res_avg <- averageSE(std_res, column = "storage_time")
+```
+
+```{r standards-pca-avg, echo = FALSE}
+pc <- prcomp(t(log2(assay(std_res_avg, "normalized_filled_imputed"))),
+                 center = TRUE, scale. = FALSE)
+```
+
+```{r standards-pca-plot-avg, fig.path = IMAGE_PATH, fig.cap = "PCA of the samples based on intensities of known compounds.", fig.width = 7 * phi, fig.height = 7, echo = FALSE}
+par(mfrow = c(1, 2))
+plot_pca(pc, col = "#00000080",
+         bg = paste0(col_storage[as.character(std_res_avg$storage)], 90),
+         pc_x = 1, pc_y = 2, pch = 21)
+plot_pca(pc, col = "#00000080",
+         bg = paste0(col_storage[as.character(std_res_avg$storage)], 90),
+         pc_x = 3, pc_y = 4, pch = 21)
+legend("topleft", col = col_storage, legend = names(col_storage),
+       title = "storage", pch = 16, ncol = 2)
+```
+
+In the PC1 plot, we see a separation of samples stored at room temperture (RT),
+samples that were stored under other circumstances cannot be distinguished from
+the PCA plots.
+
+```{r standards-pca-plot-time-avg, fig.path = IMAGE_PATH, fig.cap = "PCA of the samples based on intensities of known compounds.", fig.width = 7 * phi, fig.height = 7, echo = FALSE}
+par(mfrow = c(1, 2))
+pchs <- 21:25
+names(pchs) <- c("RT", "BAG", "4C_BAG", "VACUUM", "4C_VACUUM")
+plot_pca(pc, col = "#00000080",
+         bg = paste0(col_time[as.character(std_res_avg$time)], 90),
+         pc_x = 1, pc_y = 2, pch = pchs[std_res_avg$storage])
+plot_pca(pc, col = "#00000080",
+         bg = paste0(col_time[as.character(std_res_avg$time)], 90),
+         pc_x = 3, pc_y = 4, pch = pchs[std_res_avg$storage])
+legend("topleft", pch = pchs, legend = names(pchs),
+       title = "storage", ncol = 2)
+```
+
+At last we create also a heatmap of the coefficients.
+
+```{r standards-heatmap-coefficients, echo = FALSE, fig.path = IMAGE_PATH, fig.height = 8 * phi, fig.width = 8, fig.cap = "Heatmap of coefficients from the comparisons of each storage timepoint against 2h RT. For better visibility the color bar was cut at a value of 5."}
+coefs <- as.matrix(rowData(std_res)[, grep("coef", colnames(rowData(std_res)))])
+anns <- data.frame(storage = rep(c("RT", "BAG", "VACUUM",
+                                   "4C_BAG", "4C_VACUUM"), each = 6),
+                   time = rep(c("6h", "1d", "2d", "3d", "1w", "2w"), 5))
+rownames(anns) <- colnames(coefs)
+rownames(coefs) <- rowData(std_res)$name
+brks <- seq(-5, 5, length.out = 101)
+pheatmap(coefs, show_colname = FALSE, annotation_col = anns, breaks = brks,
+         annotation_colors = list(storage = col_storage, time = col_time))
+```
+
+
+# Session information
+
+```{r}
+sessionInfo()
+```

@@ -10,18 +10,12 @@ output:
     toc_float: true
 bibliography: references.bib
 csl: biomed-central.csl
-references:
-- id: dummy
-  title: no title
-  author:
-  - family: noname
-    given: noname
 ---
 
 ```{r setup, echo = FALSE, results = "asis", warning = FALSE}
 library(BiocStyle)
 BiocStyle::markdown()
-knitr::opts_chunk$set(echo = TRUE, message = FALSE)
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, dev = c("png", "pdf"))
 ```
 
 ```{r parameters, echo = FALSE, warning = FALSE}
@@ -93,20 +87,20 @@ res_pos <- res_pos[, res_pos$storage != "QC"]
 res_pos$storage <- factor(as.character(res_pos$storage))
 
 ## Define colors for the groups.
-col_storage <- brewer.pal(6, name = "Set1")
-names(col_storage) <- c("4C_BAG",   # red
-                        "RT",        # blue
-                        "BAG",       # green
-                        "VACUUM",    # purple
-                        "4C_VACUUM", # orange
-                        "QC")        # yellow
-col_time <- brewer.pal(8, name = "Set3")
-names(col_time) <- c("1d",
-                     "1w",
-                     "2d",
-                     "2h",
-                     "3d",
+col_storage <- brewer.pal(12, name = "Paired")[c(6, 2, 10, 1, 9, 7)]
+names(col_storage) <- c("RT",           # red
+                        "BAG",          # blue
+                        "VACUUM",       # purple
+                        "4C_BAG",       # light blue
+                        "4C_VACUUM",    # light purple
+                        "QC")           # light orange
+col_time <- brewer.pal(9, name = "OrRd")[c(3, 4, 5, 6, 7, 8, 9, 1)]
+names(col_time) <- c("2h",
                      "6h",
+                     "1d",
+                     "2d",
+                     "3d",
+                     "1w",
                      "2w",
                      "QC")
 
@@ -214,10 +208,7 @@ keep <- moreAreValidThan(assay(res, "raw"), f = res$storage, prop = 1/3)
 res <- res[keep, ]
 ```
 
-The dataset has been reduced from `r length(rsds)` to `r nrow(res)` features:
-this result shows that most features have been retained even after
-pre-filtering, thus ensuring a dataset where features have a D-ratio lower than
-0.5 and have less than 70% missing values.
+The dataset has been reduced from `r length(rsds)` to `r nrow(res)` features.
 
 
 # Exploratory analysis: PCA
@@ -233,12 +224,14 @@ pc <- prcomp(t(log2(assay(res, "normalized_filled_imputed"))),
 
 ```{r pca-plot, fig.path = IMAGE_PATH, fig.cap = "PCA of the samples based on feature intensities.", fig.width = 7 * phi, fig.height = 7, echo = FALSE}
 par(mfrow = c(1, 2))
-plot_pca(pc, col = paste0(col_storage[as.character(res$storage)], 90),
-         pc_x = 1, pc_y = 2)
-plot_pca(pc, col = paste0(col_storage[as.character(res$storage)], 90),
-         pc_x = 3, pc_y = 4)
-legend("topleft", col_storage, legend = names(col_storage),
-       title = "phenotype", pch = 16, ncol = 2)
+plot_pca(pc, col = "#00000080",
+         bg = paste0(col_storage[as.character(res$storage)], 90),
+         pc_x = 1, pc_y = 2, pch = 21)
+plot_pca(pc, col = "#00000080",
+         bg = paste0(col_storage[as.character(res$storage)], 90),
+         pc_x = 3, pc_y = 4, pch = 21)
+legend("topleft", col = col_storage, legend = names(col_storage),
+       title = "storage", pch = 16, ncol = 2)
 ```
 
 Add description
@@ -313,36 +306,36 @@ fit <- lmFit(log2(assay(res, "normalized_filled_imputed")), design = dsgn)
 
 ## Fit the actual contrasts of interest
 contr_mat <- makeContrasts(
-  RT2hvsRT6h = storetimeRT_2h - storetimeRT_6h,
-  RT2hvsRT1d = storetimeRT_2h - storetimeRT_1d,
-  RT2hvsRT2d = storetimeRT_2h - storetimeRT_2d,
-  RT2hvsRT3d = storetimeRT_2h - storetimeRT_3d,
-  RT2hvsRT1w = storetimeRT_2h - storetimeRT_1w,
-  RT2hvsRT2w = storetimeRT_2h - storetimeRT_2w,
-  RT2hvsBAG6h = storetimeRT_2h - storetimeBAG_6h,
-  RT2hvsBAG1d = storetimeRT_2h - storetimeBAG_1d,
-  RT2hvsBAG2d = storetimeRT_2h - storetimeBAG_2d,
-  RT2hvsBAG3d = storetimeRT_2h - storetimeBAG_3d,
-  RT2hvsBAG1w = storetimeRT_2h - storetimeBAG_1w,
-  RT2hvsBAG2w = storetimeRT_2h - storetimeBAG_2w,
-  RT2hvsVACUUM6h = storetimeRT_2h - storetimeVACUUM_6h,
-  RT2hvsVACUUM1d = storetimeRT_2h - storetimeVACUUM_1d,
-  RT2hvsVACUUM2d = storetimeRT_2h - storetimeVACUUM_2d,
-  RT2hvsVACUUM3d = storetimeRT_2h - storetimeVACUUM_3d,
-  RT2hvsVACUUM1w = storetimeRT_2h - storetimeVACUUM_1w,
-  RT2hvsVACUUM2w = storetimeRT_2h - storetimeVACUUM_2w,
-  RT2hvs4CBAG6h = storetimeRT_2h - storetime4C_BAG_6h,
-  RT2hvs4CBAG1d = storetimeRT_2h - storetime4C_BAG_1d,
-  RT2hvs4CBAG2d = storetimeRT_2h - storetime4C_BAG_2d,
-  RT2hvs4CBAG3d = storetimeRT_2h - storetime4C_BAG_3d,
-  RT2hvs4CBAG1w = storetimeRT_2h - storetime4C_BAG_1w,
-  RT2hvs4CBAG2w = storetimeRT_2h - storetime4C_BAG_2w,
-  RT2hvs4CVACUUM6h = storetimeRT_2h - storetime4C_VACUUM_6h,
-  RT2hvs4CVACUUM1d = storetimeRT_2h - storetime4C_VACUUM_1d,
-  RT2hvs4CVACUUM2d = storetimeRT_2h - storetime4C_VACUUM_2d,
-  RT2hvs4CVACUUM3d = storetimeRT_2h - storetime4C_VACUUM_3d,
-  RT2hvs4CVACUUM1w = storetimeRT_2h - storetime4C_VACUUM_1w,
-  RT2hvs4CVACUUM2w = storetimeRT_2h - storetime4C_VACUUM_2w,
+  RT6hvsRT2h = storetimeRT_6h - storetimeRT_2h,
+  RT1dvsRT2h = storetimeRT_1d - storetimeRT_2h,
+  RT2dvsRT2h = storetimeRT_2d - storetimeRT_2h,
+  RT3dvsRT2h = storetimeRT_3d - storetimeRT_2h,
+  RT1wvsRT2h = storetimeRT_1w - storetimeRT_2h,
+  RT2wvsRT2h = storetimeRT_2w - storetimeRT_2h,
+  BAG6hvsRT2h = storetimeBAG_6h - storetimeRT_2h,
+  BAG1dvsRT2h = storetimeBAG_1d - storetimeRT_2h,
+  BAG2dvsRT2h = storetimeBAG_2d - storetimeRT_2h,
+  BAG3dvsRT2h = storetimeBAG_3d - storetimeRT_2h,
+  BAG1wvsRT2h = storetimeBAG_1w - storetimeRT_2h,
+  BAG2wvsRT2h = storetimeBAG_2w - storetimeRT_2h,
+  VACUUM6hvsRT2h = storetimeVACUUM_6h - storetimeRT_2h,
+  VACUUM1dvsRT2h = storetimeVACUUM_1d - storetimeRT_2h,
+  VACUUM2dvsRT2h = storetimeVACUUM_2d - storetimeRT_2h,
+  VACUUM3dvsRT2h = storetimeVACUUM_3d - storetimeRT_2h,
+  VACUUM1wvsRT2h = storetimeVACUUM_1w - storetimeRT_2h,
+  VACUUM2wvsRT2h = storetimeVACUUM_2w - storetimeRT_2h,
+  `4CBAG6hvsRT2h` = storetime4C_BAG_6h - storetimeRT_2h,
+  `4CBAG1dvsRT2h` = storetime4C_BAG_1d - storetimeRT_2h,
+  `4CBAG2dvsRT2h` = storetime4C_BAG_2d- storetimeRT_2h,
+  `4CBAG3dvsRT2h` = storetime4C_BAG_3d - storetimeRT_2h,
+  `4CBAG1wvsRT2h` = storetime4C_BAG_1w- storetimeRT_2h,
+  `4CBAG2wvsRT2h` = storetime4C_BAG_2w - storetimeRT_2h,
+  `4CVACUUM6hvsRT2h` = storetime4C_VACUUM_6h - storetimeRT_2h,
+  `4CVACUUM1dvsRT2h` = storetime4C_VACUUM_1d- storetimeRT_2h,
+  `4CVACUUM2dvsRT2h` = storetime4C_VACUUM_2d - storetimeRT_2h,
+  `4CVACUUM3dvsRT2h` = storetime4C_VACUUM_3d - storetimeRT_2h,
+  `4CVACUUM1wvsRT2h` = storetime4C_VACUUM_1w - storetimeRT_2h,
+  `4CVACUUM2wvsRT2h` = storetime4C_VACUUM_2w - storetimeRT_2h,
   levels = dsgn)
 fit <- contrasts.fit(fit, contrasts = contr_mat)
 fit <- eBayes(fit)
@@ -351,275 +344,30 @@ tmp <- data.frame(
     coef = fit$coefficient,
     pvalue = fit$p.value,
     adjp = adjp,
-    significant = adjp < p.cut & abs(fit$coefficient) > m.cut
-)
-tmp$avg.RT2h <- rowMeans(log2(assay(res, "normalized_filled_imputed")
-                              [, res$storage_time == "RT_2h"]))
-tmp$avg.RT6h <- rowMeans(log2(assay(res, "normalized_filled_imputed")
-                              [, res$storage_time == "RT_6h"]))
-tmp$avg.RT1d <- rowMeans(log2(assay(res, "normalized_filled_imputed")
-                              [, res$storage_time == "RT_1d"]))
-tmp$avg.RT2d <- rowMeans(log2(assay(res, "normalized_filled_imputed")
-                              [, res$storage_time == "RT_2d"]))
-tmp$avg.RT3d <- rowMeans(log2(assay(res, "normalized_filled_imputed")
-                              [, res$storage_time == "RT_3d"]))
-tmp$avg.RT1w <- rowMeans(log2(assay(res, "normalized_filled_imputed")
-                              [, res$storage_time == "RT_1w"]))
-tmp$avg.RT2w <- rowMeans(log2(assay(res, "normalized_filled_imputed")
-                              [, res$storage_time == "RT_2w"]))
-tmp$avg.BAG6h <- rowMeans(log2(assay(res, "normalized_filled_imputed")
-                              [, res$storage_time == "BAG_6h"]))
-tmp$avg.BAG1d <- rowMeans(log2(assay(res, "normalized_filled_imputed")
-                              [, res$storage_time == "BAG_1d"]))
-tmp$avg.BAG2d <- rowMeans(log2(assay(res, "normalized_filled_imputed")
-                              [, res$storage_time == "BAG_2d"]))
-tmp$avg.BAG3d <- rowMeans(log2(assay(res, "normalized_filled_imputed")
-                              [, res$storage_time == "BAG_3d"]))
-tmp$avg.BAG1w <- rowMeans(log2(assay(res, "normalized_filled_imputed")
-                              [, res$storage_time == "BAG_1w"]))
-tmp$avg.BAG2w <- rowMeans(log2(assay(res, "normalized_filled_imputed")
-                              [, res$storage_time == "BAG_2w"]))
-tmp$avg.VACUUM6h <- rowMeans(log2(assay(res, "normalized_filled_imputed")
-                              [, res$storage_time == "VACUUM_6h"]))
-tmp$avg.VACUUM1d <- rowMeans(log2(assay(res, "normalized_filled_imputed")
-                              [, res$storage_time == "VACUUM_1d"]))
-tmp$avg.VACUUM2d <- rowMeans(log2(assay(res, "normalized_filled_imputed")
-                              [, res$storage_time == "VACUUM_2d"]))
-tmp$avg.VACUUM3d <- rowMeans(log2(assay(res, "normalized_filled_imputed")
-                              [, res$storage_time == "VACUUM_3d"]))
-tmp$avg.VACUUM1w <- rowMeans(log2(assay(res, "normalized_filled_imputed")
-                              [, res$storage_time == "VACUUM_1w"]))
-tmp$avg.VACUUM2w <- rowMeans(log2(assay(res, "normalized_filled_imputed")
-                              [, res$storage_time == "VACUUM_2w"]))
-tmp$avg.4CBAG6h <- rowMeans(log2(assay(res, "normalized_filled_imputed")
-                              [, res$storage_time == "4C_BAG_6h"]))
-tmp$avg.4CBAG1d <- rowMeans(log2(assay(res, "normalized_filled_imputed")
-                              [, res$storage_time == "4C_BAG_1d"]))
-tmp$avg.4CBAG2d <- rowMeans(log2(assay(res, "normalized_filled_imputed")
-                              [, res$storage_time == "4C_BAG_2d"]))
-tmp$avg.4CBAG3d <- rowMeans(log2(assay(res, "normalized_filled_imputed")
-                              [, res$storage_time == "4C_BAG_3d"]))
-tmp$avg.4CBAG1w <- rowMeans(log2(assay(res, "normalized_filled_imputed")
-                              [, res$storage_time == "4C_BAG_1w"]))
-tmp$avg.4CBAG2w <- rowMeans(log2(assay(res, "normalized_filled_imputed")
-                              [, res$storage_time == "4C_BAG_2w"]))
-tmp$avg.4CVACUUM6h <- rowMeans(log2(assay(res, "normalized_filled_imputed")
-                              [, res$storage_time == "4C_VACUUM_6h"]))
-tmp$avg.4CVACUUM1d <- rowMeans(log2(assay(res, "normalized_filled_imputed")
-                              [, res$storage_time == "4C_VACUUM_1d"]))
-tmp$avg.4CVACUUM2d <- rowMeans(log2(assay(res, "normalized_filled_imputed")
-                              [, res$storage_time == "4C_VACUUM_2d"]))
-tmp$avg.4CVACUUM3d <- rowMeans(log2(assay(res, "normalized_filled_imputed")
-                              [, res$storage_time == "4C_VACUUM_3d"]))
-tmp$avg.4CVACUUM1w <- rowMeans(log2(assay(res, "normalized_filled_imputed")
-                              [, res$storage_time == "4C_VACUUM_1w"]))
-tmp$avg.4CVACUUM2w <- rowMeans(log2(assay(res, "normalized_filled_imputed")
-                              [, res$storage_time == "4C_VACUUM_2w"]))
-rowData(res) <- cbind(rowData(res), tmp)
+    significant = adjp < p.cut & abs(fit$coefficient) > m.cut,
+    check.names = FALSE
+    )
+avgs <- lapply(unique(res$storage_time), function(z) {
+    rowMeans(log2(assay(
+        res, "normalized_filled_imputed")[, res$storage_time == z]))
+})
+avgs <- do.call(cbind, avgs)
+colnames(avgs) <- paste0("avg.", sub("_", "", unique(res$storage_time)))
+rowData(res) <- cbind(rowData(res), tmp, avgs)
 ```
 
-We plot then the distribution of p-values, both raw and adjusted for all 
-samples stored at room temperature:
-
-```{r standards-p-value-histogram, echo = FALSE, fig.path = IMAGE_PATH, fig.width = 7 * phi, fig.cap = "Distribution of raw (left) and adjusted p-values (right) for all 6 comparisons."}
-par(mfrow = c(3, 4))
-hist(rowData(res)$pvalue.RT2hvsRT6h, breaks = 64, xlab = "p value",
-     main = "RT for 2h vs RT for 6h")
-hist(rowData(res)$adjp.RT2hvsRT6h, breaks = 64,
-     xlab = expression(p[BH]~value),
-     main = "RT for 2h vs RT for 6h")
-hist(rowData(res)$pvalue.RT2hvsRT1d, breaks = 64, xlab = "p value",
-     main = "RT for 2h vs RT for 1d")
-hist(rowData(res)$adjp.RT2hvsRT1d, breaks = 64,
-     xlab = expression(p[BH]~value),
-     main = "RT for 2h vs RT for 1d")
-hist(rowData(res)$pvalue.RT2hvsRT2d, breaks = 64, xlab = "p value",
-     main = "RT for 2h vs RT for 2d")
-hist(rowData(res)$adjp.RT2hvsRT2d, breaks = 64,
-     xlab = expression(p[BH]~value),
-     main = "RT for 2h vs RT for 2d")
-hist(rowData(res)$pvalue.RT2hvsRT3d, breaks = 64, xlab = "p value",
-     main = "RT for 2h vs RT for 3d")
-hist(rowData(res)$adjp.RT2hvsRT3d, breaks = 64,
-     xlab = expression(p[BH]~value),
-     main = "RT for 2h vs RT for 3d")
-hist(rowData(res)$pvalue.RT2hvsRT1w, breaks = 64, xlab = "p value",
-     main = "RT for 2h vs RT for 1w")
-hist(rowData(res)$adjp.RT2hvsRT1w, breaks = 64,
-     xlab = expression(p[BH]~value),
-     main = "RT for 2h vs RT for 1w")
-hist(rowData(res)$pvalue.RT2hvsRT2w, breaks = 64, xlab = "p value",
-     main = "RT for 2h vs RT for 2w")
-hist(rowData(res)$adjp.RT2hvsRT2w, breaks = 64,
-     xlab = expression(p[BH]~value),
-     main = "RT for 2h vs RT for 2w")
-
-```
-
-Then, we plot distribution of the raw and adjusted p-values for the comparison
-of samples stored in plastic bags and the sample that dried for 2h at room
-temperature:
-
-```{r standards-p-value-histogram, echo = FALSE, fig.path = IMAGE_PATH, fig.width = 7 * phi, fig.cap = "Distribution of raw (left) and adjusted p-values (right) for all 6 comparisons."}
-par(mfrow = c(3, 4))
-hist(rowData(res)$pvalue.RT2hvsBAG6h, breaks = 64, xlab = "p value",
-     main = "RT for 2h vs BAG for 6h")
-hist(rowData(res)$adjp.RT2hvsBAG6h, breaks = 64,
-     xlab = expression(p[BH]~value),
-     main = "RT for 2h vs BAG for 6h")
-hist(rowData(res)$pvalue.RT2hvsBAG1d, breaks = 64, xlab = "p value",
-     main = "RT for 2h vs BAG for 1d")
-hist(rowData(res)$adjp.RT2hvsBAG1d, breaks = 64,
-     xlab = expression(p[BH]~value),
-     main = "RT for 2h vs BAG for 1d")
-hist(rowData(res)$pvalue.RT2hvsBAG2d, breaks = 64, xlab = "p value",
-     main = "RT for 2h vs BAG for 2d")
-hist(rowData(res)$adjp.RT2hvsBAG2d, breaks = 64,
-     xlab = expression(p[BH]~value),
-     main = "RT for 2h vs BAG for 2d")
-hist(rowData(res)$pvalue.RT2hvsBAG3d, breaks = 64, xlab = "p value",
-     main = "RT for 2h vs BAG for 3d")
-hist(rowData(res)$adjp.RT2hvsBAG3d, breaks = 64,
-     xlab = expression(p[BH]~value),
-     main = "RT for 2h vs BAG for 3d")
-hist(rowData(res)$pvalue.RT2hvsBAG1w, breaks = 64, xlab = "p value",
-     main = "RT for 2h vs BAG for 1w")
-hist(rowData(res)$adjp.RT2hvsBAG1w, breaks = 64,
-     xlab = expression(p[BH]~value),
-     main = "RT for 2h vs BAG for 1w")
-hist(rowData(res)$pvalue.RT2hvsBAG2w, breaks = 64, xlab = "p value",
-     main = "RT for 2h vs BAG for 2w")
-hist(rowData(res)$adjp.RT2hvsBAG2w, breaks = 64,
-     xlab = expression(p[BH]~value),
-     main = "RT for 2h vs BAG for 2w")
-
-```
-
-Next, we plot distribution of the raw and adjusted p-values for the comparison
-of samples stored in vacuum bags and the sample that dried for 2h at room
-temperature:
-
-```{r standards-p-value-histogram, echo = FALSE, fig.path = IMAGE_PATH, fig.width = 7 * phi, fig.cap = "Distribution of raw (left) and adjusted p-values (right) for all 6 comparisons."}
-par(mfrow = c(3, 4))
-hist(rowData(res)$pvalue.RT2hvsVACUUM6h, breaks = 64, xlab = "p value",
-     main = "RT for 2h vs VAC for 6h")
-hist(rowData(res)$adjp.RT2hvsVACUUM6h, breaks = 64,
-     xlab = expression(p[BH]~value),
-     main = "RT for 2h vs VAC for 6h")
-hist(rowData(res)$pvalue.RT2hvsVACUUM1d, breaks = 64, xlab = "p value",
-     main = "RT for 2h vs VAC for 1d")
-hist(rowData(res)$adjp.RT2hvsVACUUM1d, breaks = 64,
-     xlab = expression(p[BH]~value),
-     main = "RT for 2h vs VAC for 1d")
-hist(rowData(res)$pvalue.RT2hvsVACUUM2d, breaks = 64, xlab = "p value",
-     main = "RT for 2h vs VAC for 2d")
-hist(rowData(res)$adjp.RT2hvsVACUUM2d, breaks = 64,
-     xlab = expression(p[BH]~value),
-     main = "RT for 2h vs VAC for 2d")
-hist(rowData(res)$pvalue.RT2hvsVACUUM3d, breaks = 64, xlab = "p value",
-     main = "RT for 2h vs VAC for 3d")
-hist(rowData(res)$adjp.RT2hvsVACUUM3d, breaks = 64,
-     xlab = expression(p[BH]~value),
-     main = "RT for 2h vs VAC for 3d")
-hist(rowData(res)$pvalue.RT2hvsVACUUM1w, breaks = 64, xlab = "p value",
-     main = "RT for 2h vs VAC for 1w")
-hist(rowData(res)$adjp.RT2hvsVACUUM1w, breaks = 64,
-     xlab = expression(p[BH]~value),
-     main = "RT for 2h vs VAC for 1w")
-hist(rowData(res)$pvalue.RT2hvsVACUUM2w, breaks = 64, xlab = "p value",
-     main = "RT for 2h vs VAC for 2w")
-hist(rowData(res)$adjp.RT2hvsVACUUM2w, breaks = 64,
-     xlab = expression(p[BH]~value),
-     main = "RT for 2h vs VAC for 2w")
-
-```
-
-Then, we plot distribution of the raw and adjusted p-values for the comparison
-of samples stored in plastic bags at 4°C and the sample that dried for 2h at
-room temperature:
-
-```{r standards-p-value-histogram, echo = FALSE, fig.path = IMAGE_PATH, fig.width = 7 * phi, fig.cap = "Distribution of raw (left) and adjusted p-values (right) for all 6 comparisons."}
-par(mfrow = c(3, 4))
-hist(rowData(res)$pvalue.RT2hvs4CBAG6h, breaks = 64, xlab = "p value",
-     main = "RT for 2h vs 4C BAG for 6h")
-hist(rowData(res)$adjp.RT2hvs4CBAG6h, breaks = 64,
-     xlab = expression(p[BH]~value),
-     main = "RT for 2h vs 4C BAG for 6h")
-hist(rowData(res)$pvalue.RT2hvs4CBAG1d, breaks = 64, xlab = "p value",
-     main = "RT for 2h vs 4C BAG for 1d")
-hist(rowData(res)$adjp.RT2hvs4CBAG1d, breaks = 64,
-     xlab = expression(p[BH]~value),
-     main = "RT for 2h vs 4C BAG for 1d")
-hist(rowData(res)$pvalue.RT2hvs4CBAG2d, breaks = 64, xlab = "p value",
-     main = "RT for 2h vs 4C BAG for 2d")
-hist(rowData(res)$adjp.RT2hvs4CBAG2d, breaks = 64,
-     xlab = expression(p[BH]~value),
-     main = "RT for 2h vs 4C BAG for 2d")
-hist(rowData(res)$pvalue.RT2hvs4CBAG3d, breaks = 64, xlab = "p value",
-     main = "RT for 2h vs 4C BAG for 3d")
-hist(rowData(res)$adjp.RT2hvs4CBAG3d, breaks = 64,
-     xlab = expression(p[BH]~value),
-     main = "RT for 2h vs 4C BAG for 3d")
-hist(rowData(res)$pvalue.RT2hvs4CBAG1w, breaks = 64, xlab = "p value",
-     main = "RT for 2h vs 4C BAG for 1w")
-hist(rowData(res)$adjp.RT2hvs4CBAG1w, breaks = 64,
-     xlab = expression(p[BH]~value),
-     main = "RT for 2h vs 4C BAG for 1w")
-hist(rowData(res)$pvalue.RT2hvs4CBAG2w, breaks = 64, xlab = "p value",
-     main = "RT for 2h vs 4C BAG for 2w")
-hist(rowData(res)$adjp.RT2hvs4CBAG2w, breaks = 64,
-     xlab = expression(p[BH]~value),
-     main = "RT for 2h vs 4C BAG for 2w")
-
-```
-
-Lastly, we plot distribution of the raw and adjusted p-values for the comparison
-of samples stored in vacuum bags at 4°c and the sample that dried for 2h at room
-temperature:
-
-```{r standards-p-value-histogram, echo = FALSE, fig.path = IMAGE_PATH, fig.width = 10 * phi, fig.cap = "Distribution of raw (left) and adjusted p-values (right) for all 6 comparisons."}
-par(mfrow = c(3, 4))
-hist(rowData(res)$pvalue.RT2hvs4CVACUUM6h, breaks = 64, xlab = "p value",
-     main = "RT for 2h vs 4C VAC for 6h")
-hist(rowData(res)$adjp.RT2hvs4CVACUUM6h, breaks = 64,
-     xlab = expression(p[BH]~value),
-     main = "RT for 2h vs 4C VAC for 6h")
-hist(rowData(res)$pvalue.RT2hvs4CVACUUM1d, breaks = 64, xlab = "p value",
-     main = "RT for 2h vs 4C VAC for 1d")
-hist(rowData(res)$adjp.RT2hvs4CVACUUM1d, breaks = 64,
-     xlab = expression(p[BH]~value),
-     main = "RT for 2h vs 4C VAC for 1d")
-hist(rowData(res)$pvalue.RT2hvs4CVACUUM2d, breaks = 64, xlab = "p value",
-     main = "RT for 2h vs 4C VAC for 2d")
-hist(rowData(res)$adjp.RT2hvs4CVACUUM2d, breaks = 64,
-     xlab = expression(p[BH]~value),
-     main = "RT for 2h vs 4C VAC for 2d")
-hist(rowData(res)$pvalue.RT2hvs4CVACUUM3d, breaks = 64, xlab = "p value",
-     main = "RT for 2h vs 4C VAC for 3d")
-hist(rowData(res)$adjp.RT2hvs4CVACUUM3d, breaks = 64,
-     xlab = expression(p[BH]~value),
-     main = "RT for 2h vs 4C VAC for 3d")
-hist(rowData(res)$pvalue.RT2hvs4CVACUUM1w, breaks = 64, xlab = "p value",
-     main = "RT for 2h vs 4C VAC for 1w")
-hist(rowData(res)$adjp.RT2hvs4CVACUUM1w, breaks = 64,
-     xlab = expression(p[BH]~value),
-     main = "RT for 2h vs 4C VAC for 1w")
-hist(rowData(res)$pvalue.RT2hvs4CVACUUM2w, breaks = 64, xlab = "p value",
-     main = "RT for 2h vs 4C VAC for 2w")
-hist(rowData(res)$adjp.RT2hvs4CVACUUM2w, breaks = 64,
-     xlab = expression(p[BH]~value),
-     main = "RT for 2h vs 4C VAC for 2w")
-
-```
-
-Thus, most of the metabolites were identified to have significantly different
-concentrations between the comparison. A table with the number of significant
-metabolites is shown below.
+A table with the number of significant metabolites is shown below.
 
 ```{r table-sig, echo = FALSE, results = "asis"}
-tab <- colSums(as.matrix(rowData(res)[, grep("significant", 
+tab <- colSums(as.matrix(rowData(res)[, grep("significant",
                                              colnames(rowData(res)))]))
-pandoc.table(tab, style = "rmarkdown",
+tab <- data.frame(comparison = sub("significant.", "", names(tab)), count = tab)
+tab$storage <- c(rep("RT", 6), rep("BAG", 6), rep("VACUUM", 6),
+                 rep("4C_BAG", 6), rep("4C_VACUUM", 6))
+tab$time <- rep(c("6h", "1d", "2d", "3d", "1w", "2w"), 5)
+rownames(tab) <- NULL
+pandoc.table(tab[, c("comparison", "storage", "time", "count")],
+             style = "rmarkdown",
              caption = paste0("Number of significant features of the in",
                               " total", nrow(res), "analyzed features."))
 ```
@@ -627,20 +375,110 @@ pandoc.table(tab, style = "rmarkdown",
 The number of significant features is then shown in a barplot:
 
 ```{r sig-features-barplot, echo = FALSE, fig.path = IMAGE_PATH, fig.width = 10 * phi, fig.cap = "Amount of significant features per storage condition over time"}
-
-pd <- read.table("data/sts_untar_sig.txt", sep = "\t", as.is = TRUE, header = TRUE)
-library("ggplot2")
-ggplot(pd, aes(fill=storage, y=significant, x=time)) + 
-    geom_bar(position="dodge", stat="identity") +
-  scale_fill_brewer(palette="Set1")
+tab_time <- tab
+tab_time$time <- factor(tab_time$time,
+                        levels = c("6h", "1d", "2d", "3d", "1w", "2w"))
+tab_time <- tab_time[order(as.integer(tab_time$time)), ]
+x <- barplot(tab_time$count, space = c(rep(0, 5), 0.2, rep(0, 4), 0.2,
+                                       rep(0, 4), 0.2, rep(0, 4), 0.2,
+                                       rep(0, 4), 0.2, rep(0, 4)),
+             col = col_storage[tab_time$storage], ylab = "count",
+             main = "Number of significant features")
+legend("topleft", pch = 22, col = "black", pt.bg = col_storage,
+       legend = names(col_storage))
+grid(nx = NA, ny = NULL)
+mtext(at = vapply(split(x, tab_time$time), mean, numeric(1)),
+      text = levels(tab_time$time), side = 1, cex = par("cex.axis"),
+      line = 1.5)
 ```
+
 Samples, that were stored at room temperature, show the smallest changes in
-the features compared to the samples, that were froze directly after drying.
+features compared to the samples, that were froze directly after drying.
 The samples that were stored in plastic bags at 4°C show the highest number
 of significant features compared to samples frozen after drying after one day,
 whereas after two weeks the samples stored in plastic bags at room temperature
 show th highest peak. Interestingly, after one week the amount of significant
 features was lower in all conditions compared to the amount after 3 days.
+
+```{r average-replicates, echo = FALSE}
+#' Average
+averageSE <- function(x, column = character(), mainAssay = character()) {
+    if (!column %in% colnames(colData(x)))
+        stop("Column '", "' not found in 'colData' of 'x'")
+    f <- factor(colData(x)[, column], levels = unique(colData(x)[, column]))
+    ## new colData: take the first element for each replicate.
+    cd <- colData(x)[match(levels(f), f), ]
+    rownames(cd) <- cd[, column]
+    ## loop over the assays and average them.
+    a <- lapply(assays(x), function(z) {
+        z <- split.data.frame(t(z), f = f)
+        z <- do.call(cbind, lapply(z, colMeans, na.rm = TRUE))
+        z[is.na(z)] <- NA
+        z
+    })
+    if (length(mainAssay)) {
+        tmp <- split.data.frame(t(assay(x, mainAssay)), f = f)
+        tmp <- do.call(cbind, lapply(tmp, function(y) {
+            apply(y, MARGIN = 2, FUN = sd, na.rm = TRUE)
+        }))
+        tmp[is.na(tmp)] <- NA
+        a[[paste0(mainAssay, "_sd")]] <- tmp
+    }
+    SummarizedExperiment(assays = a, rowData = rowData(x),
+                         colData = cd, metadata = metadata(x))
+}
+## Average technical replicates:
+res$storage_time <- paste0(res$storage, "_", res$time)
+res_avg <- averageSE(res, column = "storage_time")
+```
+
+```{r standards-pca-avg, echo = FALSE}
+pc <- prcomp(t(log2(assay(res_avg, "normalized_filled_imputed"))),
+                 center = TRUE, scale. = FALSE)
+```
+
+```{r standards-pca-plot-avg, fig.path = IMAGE_PATH, fig.cap = "PCA of the samples based on intensities of known compounds.", fig.width = 7 * phi, fig.height = 7, echo = FALSE}
+par(mfrow = c(1, 2))
+plot_pca(pc, col = "#00000080",
+         bg = paste0(col_storage[as.character(res_avg$storage)], 90),
+         pc_x = 1, pc_y = 2, pch = 21)
+plot_pca(pc, col = "#00000080",
+         bg = paste0(col_storage[as.character(res_avg$storage)], 90),
+         pc_x = 3, pc_y = 4, pch = 21)
+legend("topleft", col = col_storage, legend = names(col_storage),
+       title = "storage", pch = 16, ncol = 2)
+```
+
+Add description
+
+```{r standards-pca-plot-time-avg, fig.path = IMAGE_PATH, fig.cap = "PCA of the samples based on intensities of known compounds.", fig.width = 7 * phi, fig.height = 7, echo = FALSE}
+par(mfrow = c(1, 2))
+pchs <- 21:25
+names(pchs) <- c("RT", "BAG", "4C_BAG", "VACUUM", "4C_VACUUM")
+plot_pca(pc, col = "#00000080",
+         bg = paste0(col_time[as.character(res_avg$time)], 90),
+         pc_x = 1, pc_y = 2, pch = pchs[res_avg$storage])
+plot_pca(pc, col = "#00000080",
+         bg = paste0(col_time[as.character(res_avg$time)], 90),
+         pc_x = 3, pc_y = 4, pch = pchs[res_avg$storage])
+legend("topleft", pch = pchs, legend = names(pchs),
+       title = "storage", ncol = 2)
+```
+
+At last we create also a heatmap of the coefficients.
+
+```{r standards-heatmap-coefficients, echo = FALSE, fig.path = IMAGE_PATH, fig.height = 8 * phi, fig.width = 8, fig.cap = "Heatmap of coefficients from the comparisons of each storage timepoint against 2h RT. For better visibility the color bar was cut at a value of 5."}
+coefs <- as.matrix(rowData(res)[, grep("coef", colnames(rowData(res)))])
+anns <- data.frame(storage = rep(c("RT", "BAG", "VACUUM",
+                                   "4C_BAG", "4C_VACUUM"), each = 6),
+                   time = rep(c("6h", "1d", "2d", "3d", "1w", "2w"), 5))
+rownames(anns) <- colnames(coefs)
+rownames(coefs) <- rowData(res)$name
+
+brks <- seq(-5, 5, length.out = 101)
+pheatmap(coefs, show_colname = FALSE, annotation_col = anns, breaks = brks,
+         annotation_colors = list(storage = col_storage, time = col_time))
+```
 
 # Session information
 
