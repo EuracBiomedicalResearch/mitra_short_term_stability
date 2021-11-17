@@ -112,6 +112,27 @@ pandoc.table(as.data.frame(tab), style = "rmarkdown",
              caption = "Samples used in this analysis")
 ```
 
+Before proceeding with the semi-targeted analysis we calculate also RSD and
+D-ratio values for all features. See
+[sts_untargeted_neg.Rmd](sts_untargeted_neg.Rmd) for more information on these
+quality criteria.
+
+```{r filter-rsd}
+rsds <- rowRsd(assay(res_qc, "normalized_filled"))
+dratios <- apply(
+    log2(assay(res_qc, "normalized_filled")), 1, sd, na.rm = TRUE) /
+    apply(log2(assay(res_neg, "normalized_filled")), 1, sd, na.rm = TRUE)
+```
+
+We are adding this information to the results object's `rowData` so that it can
+be included in the results tables (or eventually used for pre-filtering of the
+semi-targeted data).
+
+```{r}
+rowData(res_neg)$RSD <- rsds
+rowData(res_neg)$Dratio <- dratios
+```
+
 
 # Semi-targeted analysis
 
@@ -166,7 +187,6 @@ chromatogram and plot these.
 ```{r}
 ## Match feature's m/z and rt values against expecte values for standards.
 library(MetaboAnnotation)
-register(SerialParam())
 rowData(res_neg)$feature_id <- row.names(res_neg)
 par <- MzRtParam(tolerance = 0, ppm = 20, toleranceRt = 30)
 std_match <- matchMz(res_neg, std_info, param = par,
@@ -177,7 +197,7 @@ std_match <- std_match[whichQuery(std_match)]
 std_match <- pruneTarget(std_match)
 chrs <- featureChromatograms(tmp, features = std_match$feature_id,
                              expandRt = 7, filled = TRUE)
-sample_colors <- col_storage[tmp$storage]
+sample_colors <- col_storage[as.character(tmp$storage)]
 for (i in seq_len(length(std_match$feature_id))) {
     chr <- chrs[i, ]
     pks <- chromPeaks(chr)
@@ -206,42 +226,35 @@ manually assigned to the corresponding standard.
 to_keep <- c(FT01080 = "1,5-anhydro D-glucitol",
              FT00582 = "1-Methylhistidine",
              FT00731 = "1-Methyluric acid",
-             FT00548 = "1-Methylxanthine",
              FT00092 = "2-Hydroxybutyric acid",
-             FT00092 = "3-Hydroxybutyric acid", #same as 2-Hydroxybutric acid
+             FT00092 = "3-Hydroxybutyric Acid", #same as 2-Hydroxybutric acid
              FT00582 = "3-Methylhistidine", ## same as 1-Methylhistidine
-             FT00548 = "3-Methylxanthine", #same as 1-Methylxanthine
              FT00190 = "5-Oxoproline",
-             FT00548 = "7-Methylxanthine", #same as 1- and 3-Methylxanthine
              FT02121 = "8-Oxo-2-Deoxyguanosine",
              FT00213 = "Acetylalanine",
              FT01859 = "Acetyl-Glucosamine",
-             FT00139 = "Acetylglyine",
+             FT00139 = "Acetylglycine",
              FT00845 = "Acetylmethionine",
              FT02676 = "Acetylneuraminic Acid",
-             FT00273 = "Adenine",
              FT02758 = "Adenosine",
              FT05197 = "ADP",
              FT00461 = "Allantoin",
-             FT00130 = "alpha-ketoisovaleric acid",
+             FT00130 = "Alpha-ketoisovaleric acid",
              FT04434 = "alpha-Lactose",
              FT10904 = "AMP",
              FT00639 = "Arginine",
              FT00228 = "Asparagine",
              FT01314 = "Carnosine",
-             FT07630 = "CDP-Choline",
+             FT07630 = "CDP-choline",
              FT05601 = "CDP-ethanolamine",
-             FT00860 = "Citric acid",
              FT00652 = "Citrulline",
-             FT04520 = "Corticosterone",
+             FT00216 = "Creatine",
              FT05197 = "dGDP", #same as ADP
              FT00088 = "Dimethylglycine",
              FT00706 = "Fructose", # strange signal shift
-             FT00734 = "Galactitol", # same as sorbitol
              FT00908 = "Gluconic Acid",
              FT01295 = "Glucosamine",
              FT01307 = "Glucose",
-             FT00886 = "Glucuronic Acid",
              FT00356 = "Glutamine",
              FT00227 = "Glutaric acid",
              FT09271 = "Glutathione Oxidized", # same as Glu. Reduced
@@ -251,10 +264,10 @@ to_keep <- c(FT01080 = "1,5-anhydro D-glucitol",
              FT00039 = "Glycolic acid",
              FT02121 = "Guanosine", #same as 8-Oxo-2-Deoxyguanosine
              FT00433 = "Histidine",
-             FT00733 = "Homovanillic acid",
+             FT00733 = "homovanillic acid",
              FT00214 = "Hydroxyproline",
              FT00284 = "Hypoxanthine",
-             FT01029 = "Indoleacetic acid",
+             FT01029 = "Indolelactic acid",
              FT01872 = "Inosine",
              FT00858 = "Isocitric Acid",
              FT00217 = "Isoleucine",
@@ -272,26 +285,29 @@ to_keep <- c(FT01080 = "1,5-anhydro D-glucitol",
              FT00638 = "N-Acetylornithine",
              FT10276 = "NAD",
              FT00682 = "N-Formyl-L-methionine",
+             FT00408 = "p-Hydroxyphenylacetic acid",
+             FT00297 = "PABA",
              FT01214 = "Pantothenic Acid",
              FT00285 = "Phenylacetic acid",
              FT00535 = "Phenylalanine",
              FT00526 = "Phenylpyruvic acid",
-             FT00061 = "Pyruvic acid",
-             FT00558 = "Quinolinic acid",
-             FT00396 = "Ribose",
+             FT00122 = "Proline",
+             FT00061 = "Pyruvic Acid",
+             FT01368 = "Ribulose 5-Phosphate",
              FT04346 = "SAH",
              FT00308 = "Salicylic acid",
              FT00989 = "Sebacic acid",
              FT00093 = "Serine",
-             FT00734 = "Sorbitol",
-             FT04232 = "Sphingosine-1-phosphate",
+             FT03501 = "Sphingosine",
              FT00146 = "Succinic Acid",
              FT00462 = "Succinylacetone",
+             FT04434 = "Sucrose",
              FT00171 = "Taurine",
              FT00284 = "Threonic Acid",
              FT00152 = "Threonine",
              FT01014 = "Tryptophan",
              FT02243 = "Uridine",
+             FT00141 = "Valine",
              FT00407 = "Xanthine")
 std_match <- filterMatches(std_match, queryValue = names(to_keep),
                            targetValue = to_keep,
@@ -301,12 +317,15 @@ std_match <- filterMatches(std_match, queryValue = names(to_keep),
 std_match <- std_match[whichQuery(std_match)]
 std_match <- pruneTarget(std_match)
 md <- as.data.frame(matchedData(std_match, c("feature_id", "target_name",
-                                             "target_HMDB.code")))
+                                             "target_HMDB.code", "score",
+                                             "score_rt")))
 md <- split(md, md$feature_id)
 md <- do.call(rbind, lapply(md, function(z) {
     tmp <- data.frame(ft = z$feature_id[1L])
     tmp$name <- paste0(z$target_name, collapse = ";")
     tmp$HMDB <- paste0(z$target_HMDB.code, collapse = ";")
+    tmp$diff_mz <- mean(z$score)
+    tmp$diff_rt <- mean(z$score_rt)
     tmp
 }))
 ```
@@ -317,9 +336,16 @@ identified and the corresponding metabolite are summarized in this table:
 ```{r result-table-ft-std, echo = FALSE, results = "asis"}
 ## Write result table
 md <- md[order(md$name), ]
-pandoc.table(md[, c("ft", "name")], style = "rmarkdown",
-             caption = "Features assigned to known compounds")
+md$RSD <- rsds[rownames(md)]
+md$Dratio <- dratios[rownames(md)]
+pandoc.table(md[, c("name", "diff_rt", "RSD", "Dratio")], style = "rmarkdown",
+             caption = "Features assigned to known compounds",
+             split.tables = Inf)
 ```
+
+The difference between expected and measured retention times is small for most
+standards, but some show large differences - eventually suggesting
+miss-assignments.
 
 Next, only the features assigned to the standards are taken into consideration
 and are subsetted in the `std_res` object.
@@ -327,7 +353,8 @@ and are subsetted in the `std_res` object.
 ```{r std-subset, echo = FALSE}
 std_res <- query(std_match)
 rowData(std_res) <- cbind(rowData(std_res),
-                          md[rownames(std_res), c("name", "HMDB")])
+                          md[rownames(std_res), c("name", "HMDB",
+                                                  "diff_mz", "diff_rt")])
 ```
 
 The subsetting reduced the number of features to `r length(std_res)`.
@@ -352,9 +379,8 @@ legend("topleft", col = col_storage, legend = names(col_storage),
        title = "storage", pch = 16, ncol = 2)
 ```
 
-In the PC1 plot, we see a separation of samples stored at room temperture (RT),
-samples that were stored under other circumstances cannot be distinguished from
-the PCA plots.
+In PC1 we see a clear separation of samples stored at room temperture (RT) from
+all other samples, which can not cannot be distinguished further.
 
 ```{r standards-pca-plot-time, fig.path = IMAGE_PATH, fig.cap = "PCA of the samples based on intensities of known compounds.", fig.width = 7 * phi, fig.height = 7, echo = FALSE}
 par(mfrow = c(1, 2))
@@ -362,20 +388,21 @@ pchs <- 21:25
 names(pchs) <- c("RT", "BAG", "4C_BAG", "VACUUM", "4C_VACUUM")
 plot_pca(pc, col = "#00000080",
          bg = paste0(col_time[as.character(std_res$time)], 90),
-         pc_x = 1, pc_y = 2, pch = pchs[std_res$storage])
+         pc_x = 1, pc_y = 2, pch = pchs[as.character(std_res$storage)])
 plot_pca(pc, col = "#00000080",
          bg = paste0(col_time[as.character(std_res$time)], 90),
-         pc_x = 3, pc_y = 4, pch = pchs[std_res$storage])
+         pc_x = 3, pc_y = 4, pch = pchs[as.character(std_res$storage)])
 legend("topleft", pch = pchs, legend = names(pchs),
        title = "storage", ncol = 2)
 ```
 
+Samples seem to separate by storage time on PC1.
 
 
 ## Heatmap
 
-To visualize the intensity of all detected standards across the three matrices,
-we created a heatmap of the known compounds we found in our samples.
+To visualize the intensity of all detected standards across all storage
+conditions, we created a heatmap of the known compounds we found in our samples.
 
 ```{r heatmap-source-semitargeted, fig.width = 15, fig.height = 13, fig.cap = "Heatmap of known compounds. Note that for better visibility, the color range has been restricted to -5 to 5, thus, differences larger than these values are assigned the extreme colors.", echo = FALSE, fig.path = IMAGE_PATH}
 ## Create heatmap
@@ -394,7 +421,7 @@ pm <- pheatmap(tmp, annotation_col = ann, labels_col = colnames(tmp),
 ```
 
 In the heatmap we see two main cluster, the first contains only samples stored
-at room temperature. The second cluster contains all other samples that were 
+at room temperature. The second cluster contains all other samples that were
 stored under other circumstances.
 
 The metabolites also cluster into different group. One cluster contains only
@@ -402,6 +429,7 @@ The metabolites also cluster into different group. One cluster contains only
 that were stored at room temperature compared to the other storage methods.
 
 Now, we start with the differential abundance analysis.
+
 
 ## Differential abundance analysis
 
@@ -503,7 +531,7 @@ tab_time <- tab_time[order(as.integer(tab_time$time)), ]
 x <- barplot(tab_time$count, space = c(rep(0, 5), 0.2, rep(0, 4), 0.2,
                                        rep(0, 4), 0.2, rep(0, 4), 0.2,
                                        rep(0, 4), 0.2, rep(0, 4)),
-             col = col_storage[tab_time$storage], ylab = "count",
+             col = col_storage[as.character(tab_time$storage)], ylab = "count",
              main = "Number of significant features")
 legend("topleft", pch = 22, col = "black", pt.bg = col_storage,
        legend = names(col_storage))
@@ -548,7 +576,6 @@ averageSE <- function(x, column = character(), mainAssay = character()) {
                          colData = cd, metadata = metadata(x))
 }
 ## Average technical replicates:
-std_res$storage_time <- paste0(std_res$storage, "_", std_res$time)
 std_res_avg <- averageSE(std_res, column = "storage_time")
 ```
 
@@ -579,10 +606,10 @@ pchs <- 21:25
 names(pchs) <- c("RT", "BAG", "4C_BAG", "VACUUM", "4C_VACUUM")
 plot_pca(pc, col = "#00000080",
          bg = paste0(col_time[as.character(std_res_avg$time)], 90),
-         pc_x = 1, pc_y = 2, pch = pchs[std_res_avg$storage])
+         pc_x = 1, pc_y = 2, pch = pchs[as.character(std_res_avg$storage)])
 plot_pca(pc, col = "#00000080",
          bg = paste0(col_time[as.character(std_res_avg$time)], 90),
-         pc_x = 3, pc_y = 4, pch = pchs[std_res_avg$storage])
+         pc_x = 3, pc_y = 4, pch = pchs[as.character(std_res_avg$storage)])
 legend("topleft", pch = pchs, legend = names(pchs),
        title = "storage", ncol = 2)
 ```
