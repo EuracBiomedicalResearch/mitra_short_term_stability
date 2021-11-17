@@ -1,8 +1,8 @@
 ---
 title: "Differential abundance analysis, semi-targeted approach"
-subtitle: "Positive polarity"
+subtitle: "Negative polarity"
 author: "Christa Malfertheiner"
-date: "07 November 2021"
+date: "12 November 2021"
 output:
   BiocStyle::html_document:
     toc: true
@@ -20,13 +20,13 @@ knitr::opts_chunk$set(echo = TRUE, message = FALSE, dev = c("png", "pdf"))
 
 ```{r parameters, echo = FALSE, warning = FALSE}
 ## Set general parameters
-polarity <- "POS" # specify "POS" or "NEG"
+polarity <- "NEG" # specify "POS" or "NEG"
 p.cut <- 0.05     # cut-off for significance.
 m.cut <- 0.7      # cut-off for log2 fold change
 set.seed(123)
 ## Setting golden ratio to save images
 phi <- (1+sqrt(5))/2
-FILE_NAME <- "sts_targeted_pos"
+FILE_NAME <- "sts_targeted_neg"
 ## Define paths:
 IMAGE_PATH <- paste0("images/", FILE_NAME, "/")
 if (dir.exists(IMAGE_PATH)) unlink(IMAGE_PATH, recursive = TRUE, force = TRUE)
@@ -68,7 +68,7 @@ library(SummarizedExperiment)
 library(CompMetaboTools)
 library(RColorBrewer)
 library(pander)
-load("data/RData/sts_normalization_pos/res_pos.RData")
+load("data/RData/sts_normalization_neg/res_neg.RData")
 ```
 
 It is important now to remove the `POOL` samples from the dataset, because the
@@ -80,11 +80,9 @@ accessed when needed.
 We also assign the colours as seen before.
 
 ```{r split-qc, echo = TRUE}
-res_qc <- res_pos[, res_pos$storage == "QC"]
-res_pos <- res_pos[, res_pos$storage != "QC"]
-
-res_pos$storage <- factor(as.character(res_pos$storage))
-
+res_qc <- res_neg[, res_neg$storage == "QC"]
+res_neg <- res_neg[, res_neg$storage != "QC"]
+res_neg$storage <- factor(as.character(res_neg$storage))
 ## Define colors for the groups.
 col_storage <- brewer.pal(12, name = "Paired")[c(6, 2, 10, 1, 9, 7)]
 names(col_storage) <- c("RT",           # red
@@ -102,7 +100,6 @@ names(col_time) <- c("2h",
                      "1w",
                      "2w",
                      "QC")
-
 ## Setting golden ratio to save images
 phi <- (1+sqrt(5))/2
 ```
@@ -110,7 +107,7 @@ phi <- (1+sqrt(5))/2
 The samples used in this analysis are listed below.
 
 ```{r, echo = FALSE, results = "asis"}
-tab <- colData(res_pos)[, c("storage", "time")]
+tab <- colData(res_neg)[, c("storage", "time")]
 pandoc.table(as.data.frame(tab), style = "rmarkdown",
              caption = "Samples used in this analysis")
 ```
@@ -138,7 +135,7 @@ library(Rdisop)
 std_info <- read.table(
     "https://raw.githubusercontent.com/EuracBiomedicalResearch/lcms-standards/master/data/standards_dilution.txt",
     sep = "\t", header = TRUE, as.is = TRUE)
-std_info <- std_info[!is.na(std_info[, "POS"]), ]
+std_info <- std_info[!is.na(std_info[, "NEG"]), ]
 rownames(std_info) <- 1:nrow(std_info)
 std_info$exact_mass = NA
 std_info$mz_ion = NA
@@ -149,18 +146,16 @@ for (i in seq(nrow(std_info))) {
         std_info$exact_mass[i] = as.numeric(std_info$formula[i])
     ## Calculate also the m/z
     std_info$mz_ion[i] <- mass2mz(
-        std_info$exact_mass[i], adduct = std_info[i, "POS"])[1, 1]
+        std_info$exact_mass[i], adduct = std_info[i, "NEG"])[1, 1]
 }
 std_info <- std_info[!is.na(std_info$mz_ion), ]
 std_info <- std_info[order(std_info$name), ]
-
 dr <- paste0(IMAGE_PATH, "/standards/")
 dir.create(dr, recursive = TRUE, showWarnings = FALSE)
-
-##load data_pos
-load("data/RData/sts_normalization_pos/data_pos_filled.RData")
+##load data_neg
+load("data/RData/sts_normalization_neg/data_neg_filled.RData")
 ## Subset to the samples we're currently analyzing.
-tmp <- filterFile(data_pos, match(res_pos$mzML_file, data_pos$mzML_file),
+tmp <- filterFile(data_neg, match(res_neg$mzML_file, data_neg$mzML_file),
                   keepFeatures = TRUE)
 ```
 
@@ -171,9 +166,10 @@ chromatogram and plot these.
 ```{r}
 ## Match feature's m/z and rt values against expecte values for standards.
 library(MetaboAnnotation)
-rowData(res_pos)$feature_id <- row.names(res_pos)
+register(SerialParam())
+rowData(res_neg)$feature_id <- row.names(res_neg)
 par <- MzRtParam(tolerance = 0, ppm = 20, toleranceRt = 30)
-std_match <- matchMz(res_pos, std_info, param = par,
+std_match <- matchMz(res_neg, std_info, param = par,
                      mzColname = c("mzmed", "mz_ion"),
                      rtColname = c("rtmed", "RT"))
 ## Subset to matching features.
@@ -207,75 +203,96 @@ manually assigned to the corresponding standard.
 ## - Go through all plots for all standards and if there is one feature
 ##   that clearly matches (i.e. retention time close to the expected retention
 ##   time and a single peak present in the wider rt range) assign it.
-to_keep <- c(FT00602 = "1-Methylhistidine",
-             FT00603 = "3-Methylhistidine", ## same as 1-Methylhistidine
-             FT00320 = "5-Oxoproline",
-             FT01648 = "8-Oxo-2-Deoxyguanosine",
-             FT00912 = "Acetylcarnitine",
-             FT01254 = "Acetyl-Glucosamine",
-             FT00912 = "Acetylcarnitine",
-             FT00850 = "Acetylhistidine",
-             FT00901 = "ADMA",
-             FT03607 = "ADP",
-             FT00127 = "Alanine",
-             FT02791 = "alpha-Lactose",
-             FT02548 = "AMP",
-             FT00643 = "Arginine",
-             FT00338 = "Asparagine",
-             FT00239 = "Betaine",
-             FT00824 = "Caffeine",
-             FT01117 = "Carnosine",
-             FT00167 = "Choline",
-             FT00655 = "Citrulline",
-             FT01973 = "dCMP",
-             FT03607 = "dGDP",
-             FT02549 = "dGMP",
-             FT00894 = "Fructose", # same as glucose and mannose
-             FT00917 = "Galactitol", # same as sorbitol
-             FT00894 = "Glucose", # same as Fructose
-             FT00444 = "Glutamine",
-             FT06228 = "Glutathione Oxidized", # same as Glu. Reduced
-             FT06228 = "Glutathione Reduced", # same as Glu. Oxidized
-             FT00605 = "Glyceraldehyde 2-phosphate",
-             FT01379 = "Glycero-phosphocholine",
-             FT00060 = "Glycine",
-             FT01648 = "Guanosine",
-             FT00204 = "Histamine",
-             FT00508 = "Histidine",
-             FT00333 = "Hydroxyproline",
-             FT00374 = "Hypoxanthine",
-             FT00335 = "Isoleucine",
-             FT00980 = "L,L-Cyclo(leucylprolyl)",
-             FT00348 = "L-Aspartic Acid",
-             FT00253 = "L-Cysteine",
-             FT00335 = "Leucine", #same as Isoleucine
-             FT00457 = "L-Glutamic Acid",
-             FT00447 = "Lysine",
-             FT00894 = "Mannose", # same as Fructose and Glucose
-             FT00469 = "Methionine",
-             FT00575 = "Methioninesulfoxide",
-             FT00641 = "N-Acetylornithine",
-             FT06938 = "NAD",
-             FT00340 = "Ornithine",
-             FT03267 = "Palmitoylcarnitine",
-             FT00578 = "Phenylalanine",
-             FT00255 = "Phenylethylamine",
-             FT00721 = "Phosphorylcholine",
-             FT00414 = "Phosphorylethanolamine",
-             FT00232 = "Proline",
-             FT03079 = "SAH",
-             FT03263 = "SAMe",
-             FT00901 = "SDMA",
-             FT00179 = "Serine",
-             FT00917 = "Sorbitol",
-             FT03017 = "Sphingosine-1-phosphate",
-             FT01866 = "Sphingosine",
-             FT02791 = "Sucrose",
-             FT00295 = "Taurine",
-             FT00245 = "Threonine",
-             FT00920 = "Tryptophan",
-             FT00695 = "Tyrosine",
-             FT00239 = "Valine")
+to_keep <- c(FT01080 = "1,5-anhydro D-glucitol",
+             FT00582 = "1-Methylhistidine",
+             FT00731 = "1-Methyluric acid",
+             FT00548 = "1-Methylxanthine",
+             FT00092 = "2-Hydroxybutyric acid",
+             FT00092 = "3-Hydroxybutyric acid", #same as 2-Hydroxybutric acid
+             FT00582 = "3-Methylhistidine", ## same as 1-Methylhistidine
+             FT00548 = "3-Methylxanthine", #same as 1-Methylxanthine
+             FT00190 = "5-Oxoproline",
+             FT00548 = "7-Methylxanthine", #same as 1- and 3-Methylxanthine
+             FT02121 = "8-Oxo-2-Deoxyguanosine",
+             FT00213 = "Acetylalanine",
+             FT01859 = "Acetyl-Glucosamine",
+             FT00139 = "Acetylglyine",
+             FT00845 = "Acetylmethionine",
+             FT02676 = "Acetylneuraminic Acid",
+             FT00273 = "Adenine",
+             FT02758 = "Adenosine",
+             FT05197 = "ADP",
+             FT00461 = "Allantoin",
+             FT00130 = "alpha-ketoisovaleric acid",
+             FT04434 = "alpha-Lactose",
+             FT10904 = "AMP",
+             FT00639 = "Arginine",
+             FT00228 = "Asparagine",
+             FT01314 = "Carnosine",
+             FT07630 = "CDP-Choline",
+             FT05601 = "CDP-ethanolamine",
+             FT00860 = "Citric acid",
+             FT00652 = "Citrulline",
+             FT04520 = "Corticosterone",
+             FT05197 = "dGDP", #same as ADP
+             FT00088 = "Dimethylglycine",
+             FT00706 = "Fructose", # strange signal shift
+             FT00734 = "Galactitol", # same as sorbitol
+             FT00908 = "Gluconic Acid",
+             FT01295 = "Glucosamine",
+             FT01307 = "Glucose",
+             FT00886 = "Glucuronic Acid",
+             FT00356 = "Glutamine",
+             FT00227 = "Glutaric acid",
+             FT09271 = "Glutathione Oxidized", # same as Glu. Reduced
+             FT09271 = "Glutathione Reduced", # same as Glu. Oxidized
+             FT00586 = "Glyceraldehyde 2-phosphate",
+             FT00096 = "Glyceric Acid",
+             FT00039 = "Glycolic acid",
+             FT02121 = "Guanosine", #same as 8-Oxo-2-Deoxyguanosine
+             FT00433 = "Histidine",
+             FT00733 = "Homovanillic acid",
+             FT00214 = "Hydroxyproline",
+             FT00284 = "Hypoxanthine",
+             FT01029 = "Indoleacetic acid",
+             FT01872 = "Inosine",
+             FT00858 = "Isocitric Acid",
+             FT00217 = "Isoleucine",
+             FT00474 = "Isovalerylglycine",
+             FT00207 = "Ketoleucine",
+             FT00064 = "Lactic acid",
+             FT00240 = "L-Aspartic Acid",
+             FT00217 = "Leucine", #same as Isoleucine
+             FT00368 = "L-Glutamic Acid",
+             FT00359 = "Lysine",
+             FT01307 = "Mannose", # same as Fructose and Glucose
+             FT00534 = "Methioninesulfoxide",
+             FT01308 = "Myo-Inositol",
+             FT00213 = "N-Acetyl-beta-alanine",
+             FT00638 = "N-Acetylornithine",
+             FT10276 = "NAD",
+             FT00682 = "N-Formyl-L-methionine",
+             FT01214 = "Pantothenic Acid",
+             FT00285 = "Phenylacetic acid",
+             FT00535 = "Phenylalanine",
+             FT00526 = "Phenylpyruvic acid",
+             FT00061 = "Pyruvic acid",
+             FT00558 = "Quinolinic acid",
+             FT00396 = "Ribose",
+             FT04346 = "SAH",
+             FT00308 = "Salicylic acid",
+             FT00989 = "Sebacic acid",
+             FT00093 = "Serine",
+             FT00734 = "Sorbitol",
+             FT04232 = "Sphingosine-1-phosphate",
+             FT00146 = "Succinic Acid",
+             FT00462 = "Succinylacetone",
+             FT00171 = "Taurine",
+             FT00284 = "Threonic Acid",
+             FT00152 = "Threonine",
+             FT01014 = "Tryptophan",
+             FT02243 = "Uridine",
+             FT00407 = "Xanthine")
 std_match <- filterMatches(std_match, queryValue = names(to_keep),
                            targetValue = to_keep,
                            queryColname = "feature_id",
@@ -376,16 +393,13 @@ pm <- pheatmap(tmp, annotation_col = ann, labels_col = colnames(tmp),
                show_colnames = FALSE)
 ```
 
-In the heatmap we see two main cluster, both containing samples from all
-storage conditions. The second cluster contains all samples that were stored
-for 6 hours and most of the samples stored for one day, whereas the first
-cluster contains most of the smples stored for two days.
+In the heatmap we see two main cluster, the first contains only samples stored
+at room temperature. The second cluster contains all other samples that were 
+stored under other circumstances.
 
 The metabolites also cluster into different group. One cluster contains only
-**Sphingosine-1-phosphate** (FT03017) which shows a low intensity in samples
-stored for 6h or 1d, but has a high intensity all other samples. In contrast,
-another cluster of **alpha-Lactose, Sucrose and SAMe** shows higher
-concentrations in the second cluster compared to the first.
+**AMP, Inosine and Guanosine**, those metabolites are highly present in samples
+that were stored at room temperature compared to the other storage methods.
 
 Now, we start with the differential abundance analysis.
 
@@ -408,11 +422,9 @@ feature is to be considered significant.
 storage <- factor(std_res$storage)
 time <- factor(std_res$time)
 storetime <- factor(std_res$storage_time)
-
 ## Fit the data to the desired design
 dsgn <- model.matrix(~ 0 + storetime)
 fit <- lmFit(log2(assay(std_res, "normalized_filled_imputed")), design = dsgn)
-
 ## Fit the actual contrasts of interest
 contr_mat <- makeContrasts(
   RT6hvsRT2h = storetimeRT_6h - storetimeRT_2h,
@@ -584,7 +596,6 @@ anns <- data.frame(storage = rep(c("RT", "BAG", "VACUUM",
                    time = rep(c("6h", "1d", "2d", "3d", "1w", "2w"), 5))
 rownames(anns) <- colnames(coefs)
 rownames(coefs) <- rowData(std_res)$name
-
 brks <- seq(-5, 5, length.out = 101)
 pheatmap(coefs, show_colname = FALSE, annotation_col = anns, breaks = brks,
          annotation_colors = list(storage = col_storage, time = col_time))

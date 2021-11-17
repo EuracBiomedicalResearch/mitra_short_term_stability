@@ -1,6 +1,6 @@
 ---
 title: "Differential abundance analysis, untargeted approach"
-subtitle: "Positive polarity"
+subtitle: "Negative polarity"
 author: "Christa Malfertheiner"
 date: "29 October 2021"
 output:
@@ -20,13 +20,13 @@ knitr::opts_chunk$set(echo = TRUE, message = FALSE, dev = c("png", "pdf"))
 
 ```{r parameters, echo = FALSE, warning = FALSE}
 ## Set general parameters
-polarity <- "POS" # specify "POS" or "NEG"
+polarity <- "NEG" # specify "POS" or "NEG"
 p.cut <- 0.05     # cut-off for significance.
 m.cut <- 0.7      # cut-off for log2 fold change
 set.seed(123)
 ## Setting golden ratio to save images
 phi <- (1+sqrt(5))/2
-FILE_NAME <- "sts_untargeted_pos"
+FILE_NAME <- "sts_untargeted_neg"
 ## Define paths:
 IMAGE_PATH <- paste0("images/", FILE_NAME, "/")
 if (dir.exists(IMAGE_PATH)) unlink(IMAGE_PATH, recursive = TRUE, force = TRUE)
@@ -69,7 +69,7 @@ library(RColorBrewer)
 library(MsFeatures)
 library(CompMetaboTools)
 library(pander)
-load("data/RData/sts_normalization_pos/res_pos.RData")
+load("data/RData/sts_normalization_neg/res_neg.RData")
 ```
 
 It is important now to remove the `QC` samples from the dataset, because the
@@ -81,11 +81,9 @@ accessed when needed.
 We assign the colours as seen before.
 
 ```{r split-qc, echo = TRUE}
-res_qc <- res_pos[, res_pos$storage == "QC"]
-res_pos <- res_pos[, res_pos$storage != "QC"]
-
-res_pos$storage <- factor(as.character(res_pos$storage))
-
+res_qc <- res_neg[, res_neg$storage == "QC"]
+res_neg <- res_neg[, res_neg$storage != "QC"]
+res_neg$storage <- factor(as.character(res_neg$storage))
 ## Define colors for the groups.
 col_storage <- brewer.pal(12, name = "Paired")[c(6, 2, 10, 1, 9, 7)]
 names(col_storage) <- c("RT",           # red
@@ -103,7 +101,6 @@ names(col_time) <- c("2h",
                      "1w",
                      "2w",
                      "QC")
-
 ## Setting golden ratio to save images
 phi <- (1+sqrt(5))/2
 ```
@@ -111,7 +108,7 @@ phi <- (1+sqrt(5))/2
 The samples used in this analysis are listed below.
 
 ```{r, echo = FALSE, results = "asis"}
-tab <- colData(res_pos)[, c("storage", "time")]
+tab <- colData(res_neg)[, c("storage", "time")]
 pandoc.table(as.data.frame(tab), style = "rmarkdown",
              caption = "Samples used in this analysis")
 ```
@@ -166,7 +163,7 @@ used for the filtering.
 rsds <- rowRsd(assay(res_qc, "normalized_filled"))
 dratios <- apply(
     log2(assay(res_qc, "normalized_filled")), 1, sd, na.rm = TRUE) /
-    apply(log2(assay(res_pos, "normalized_filled")), 1, sd, na.rm = TRUE)
+    apply(log2(assay(res_neg, "normalized_filled")), 1, sd, na.rm = TRUE)
 ```
 
 The distribution of RSD values and D-ratio is shown in the plot below:
@@ -196,7 +193,7 @@ The plot shows a correlation between RSD and D-ratios, though the two methods
 are not interchangeable. Below we pre-filter the data using the D-ratio.
 
 ```{r do-filter}
-res <- res_pos[which(dratios < 0.5), ]
+res <- res_neg[which(dratios < 0.5), ]
 ```
 
 This reduced the data set from `r length(dratios)` to `r nrow(res)` features.
@@ -299,11 +296,9 @@ among the features called *significant*.
 storage <- factor(res$storage)
 time <- factor(res$time)
 storetime <- factor(res$storage_time)
-
 ## Fit the data to the desired design
 dsgn <- model.matrix(~ 0 + storetime)
 fit <- lmFit(log2(assay(res, "normalized_filled_imputed")), design = dsgn)
-
 ## Fit the actual contrasts of interest
 contr_mat <- makeContrasts(
   RT6hvsRT2h = storetimeRT_6h - storetimeRT_2h,
@@ -452,7 +447,6 @@ legend("topleft", col = col_storage, legend = names(col_storage),
 ```
 
 
-
 ```{r standards-pca-plot-time-avg, fig.path = IMAGE_PATH, fig.cap = "PCA of the samples based on intensities of known compounds.", fig.width = 7 * phi, fig.height = 7, echo = FALSE}
 par(mfrow = c(1, 2))
 pchs <- 21:25
@@ -476,7 +470,6 @@ anns <- data.frame(storage = rep(c("RT", "BAG", "VACUUM",
                    time = rep(c("6h", "1d", "2d", "3d", "1w", "2w"), 5))
 rownames(anns) <- colnames(coefs)
 rownames(coefs) <- rowData(res)$name
-
 brks <- seq(-5, 5, length.out = 101)
 pheatmap(coefs, show_colname = FALSE, annotation_col = anns, breaks = brks,
          annotation_colors = list(storage = col_storage, time = col_time))
@@ -486,4 +479,4 @@ pheatmap(coefs, show_colname = FALSE, annotation_col = anns, breaks = brks,
 
 ```{r}
 sessionInfo()
-```
+``` 
