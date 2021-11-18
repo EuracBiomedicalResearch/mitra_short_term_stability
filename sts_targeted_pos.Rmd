@@ -115,6 +115,27 @@ pandoc.table(as.data.frame(tab), style = "rmarkdown",
              caption = "Samples used in this analysis")
 ```
 
+Before proceeding with the semi-targeted analysis we calculate also RSD and
+D-ratio values for all features. See
+[sts_untargeted_pos.Rmd](sts_untargeted_pos.Rmd) for more information on these
+quality criteria.
+
+```{r filter-rsd}
+rsds <- rowRsd(assay(res_qc, "normalized_filled"))
+dratios <- apply(
+    log2(assay(res_qc, "normalized_filled")), 1, sd, na.rm = TRUE) /
+    apply(log2(assay(res_pos, "normalized_filled")), 1, sd, na.rm = TRUE)
+```
+
+We are adding this information to the results object's `rowData` so that it can
+be included in the results tables (or eventually used for pre-filtering of the
+semi-targeted data).
+
+```{r}
+rowData(res_pos)$RSD <- rsds
+rowData(res_pos)$Dratio <- dratios
+```
+
 
 # Semi-targeted analysis
 
@@ -181,7 +202,7 @@ std_match <- std_match[whichQuery(std_match)]
 std_match <- pruneTarget(std_match)
 chrs <- featureChromatograms(tmp, features = std_match$feature_id,
                              expandRt = 7, filled = TRUE)
-sample_colors <- col_storage[tmp$storage]
+sample_colors <- col_storage[as.character(tmp$storage)]
 for (i in seq_len(length(std_match$feature_id))) {
     chr <- chrs[i, ]
     pks <- chromPeaks(chr)
@@ -284,12 +305,15 @@ std_match <- filterMatches(std_match, queryValue = names(to_keep),
 std_match <- std_match[whichQuery(std_match)]
 std_match <- pruneTarget(std_match)
 md <- as.data.frame(matchedData(std_match, c("feature_id", "target_name",
-                                             "target_HMDB.code")))
+                                             "target_HMDB.code", "score",
+                                             "score_rt")))
 md <- split(md, md$feature_id)
 md <- do.call(rbind, lapply(md, function(z) {
     tmp <- data.frame(ft = z$feature_id[1L])
     tmp$name <- paste0(z$target_name, collapse = ";")
     tmp$HMDB <- paste0(z$target_HMDB.code, collapse = ";")
+    tmp$diff_mz <- mean(z$score)
+    tmp$diff_rt <- mean(z$score_rt)
     tmp
 }))
 ```
@@ -300,8 +324,12 @@ identified and the corresponding metabolite are summarized in this table:
 ```{r result-table-ft-std, echo = FALSE, results = "asis"}
 ## Write result table
 md <- md[order(md$name), ]
-pandoc.table(md[, c("ft", "name")], style = "rmarkdown",
-             caption = "Features assigned to known compounds")
+md$RSD <- rsds[rownames(md)]
+md$Dratio <- dratios[rownames(md)]
+pandoc.table(md[, c("name", "diff_rt", "RSD", "Dratio")], style = "rmarkdown",
+             caption = "Features assigned to known compounds",
+             split.tables = Inf)
+
 ```
 
 Next, only the features assigned to the standards are taken into consideration
@@ -310,7 +338,8 @@ and are subsetted in the `std_res` object.
 ```{r std-subset, echo = FALSE}
 std_res <- query(std_match)
 rowData(std_res) <- cbind(rowData(std_res),
-                          md[rownames(std_res), c("name", "HMDB")])
+                          md[rownames(std_res), c("name", "HMDB",
+                                                  "diff_mz", "diff_rt")])
 ```
 
 The subsetting reduced the number of features to `r length(std_res)`.
@@ -345,10 +374,10 @@ pchs <- 21:25
 names(pchs) <- c("RT", "BAG", "4C_BAG", "VACUUM", "4C_VACUUM")
 plot_pca(pc, col = "#00000080",
          bg = paste0(col_time[as.character(std_res$time)], 90),
-         pc_x = 1, pc_y = 2, pch = pchs[std_res$storage])
+         pc_x = 1, pc_y = 2, pch = pchs[as.character(std_res$storage)])
 plot_pca(pc, col = "#00000080",
          bg = paste0(col_time[as.character(std_res$time)], 90),
-         pc_x = 3, pc_y = 4, pch = pchs[std_res$storage])
+         pc_x = 3, pc_y = 4, pch = pchs[as.character(std_res$storage)])
 legend("topleft", pch = pchs, legend = names(pchs),
        title = "storage", ncol = 2)
 ```
@@ -357,8 +386,8 @@ legend("topleft", pch = pchs, legend = names(pchs),
 
 ## Heatmap
 
-To visualize the intensity of all detected standards across the three matrices,
-we created a heatmap of the known compounds we found in our samples.
+To visualize the intensity of all detected standards across all storage
+conditions, we created a heatmap of the known compounds we found in our samples.
 
 ```{r heatmap-source-semitargeted, fig.width = 15, fig.height = 13, fig.cap = "Heatmap of known compounds. Note that for better visibility, the color range has been restricted to -5 to 5, thus, differences larger than these values are assigned the extreme colors.", echo = FALSE, fig.path = IMAGE_PATH}
 ## Create heatmap
@@ -491,7 +520,7 @@ tab_time <- tab_time[order(as.integer(tab_time$time)), ]
 x <- barplot(tab_time$count, space = c(rep(0, 5), 0.2, rep(0, 4), 0.2,
                                        rep(0, 4), 0.2, rep(0, 4), 0.2,
                                        rep(0, 4), 0.2, rep(0, 4)),
-             col = col_storage[tab_time$storage], ylab = "count",
+             col = col_storage[as.character(tab_time$storage)], ylab = "count",
              main = "Number of significant features")
 legend("topleft", pch = 22, col = "black", pt.bg = col_storage,
        legend = names(col_storage))
@@ -536,7 +565,6 @@ averageSE <- function(x, column = character(), mainAssay = character()) {
                          colData = cd, metadata = metadata(x))
 }
 ## Average technical replicates:
-std_res$storage_time <- paste0(std_res$storage, "_", std_res$time)
 std_res_avg <- averageSE(std_res, column = "storage_time")
 ```
 
@@ -567,10 +595,10 @@ pchs <- 21:25
 names(pchs) <- c("RT", "BAG", "4C_BAG", "VACUUM", "4C_VACUUM")
 plot_pca(pc, col = "#00000080",
          bg = paste0(col_time[as.character(std_res_avg$time)], 90),
-         pc_x = 1, pc_y = 2, pch = pchs[std_res_avg$storage])
+         pc_x = 1, pc_y = 2, pch = pchs[as.character(std_res_avg$storage)])
 plot_pca(pc, col = "#00000080",
          bg = paste0(col_time[as.character(std_res_avg$time)], 90),
-         pc_x = 3, pc_y = 4, pch = pchs[std_res_avg$storage])
+         pc_x = 3, pc_y = 4, pch = pchs[as.character(std_res_avg$storage)])
 legend("topleft", pch = pchs, legend = names(pchs),
        title = "storage", ncol = 2)
 ```
