@@ -192,6 +192,7 @@ chromatogram and plot these.
 ```{r}
 ## Match feature's m/z and rt values against expecte values for standards.
 library(MetaboAnnotation)
+register(SerialParam())
 rowData(res_pos)$feature_id <- row.names(res_pos)
 par <- MzRtParam(tolerance = 0, ppm = 20, toleranceRt = 30)
 std_match <- matchMz(res_pos, std_info, param = par,
@@ -617,7 +618,86 @@ brks <- seq(-5, 5, length.out = 101)
 pheatmap(coefs, show_colname = FALSE, annotation_col = anns, breaks = brks,
          annotation_colors = list(storage = col_storage, time = col_time))
 ```
+# Barplot number of Features with abs(coef) > 1
 
+```{r}
+more_twofold <- abs(fit$coefficient) > 1
+barplot(more_twofold)
+
+```
+
+
+# Standard deviation
+
+```{r}
+library(matrixStats)
+sds <- lapply(unique(std_res$storage_time), function(z) {
+    rowSds(log2(assay(
+        std_res, "normalized_filled_imputed")[, std_res$storage_time == z]))
+})
+sds <- do.call(cbind, sds)
+colnames(sds) <- paste0("sds.", sub("_", "", unique(std_res$storage_time)))
+rowData(std_res) <- cbind(rowData(std_res), tmp, sds)
+```
+
+```{r}
+boxplot(sds)
+
+
+```
+
+
+# Reduced data sets
+
+Now, we split the data sets into two parts. The first contains all samples
+that were stored at room temperature or in plastic bags filled with dessicants,
+the second contains all samples stored at rt or in vacuum bags.
+
+```{r split-sets, echo = TRUE}
+bags_rt <- subset(
+    std_res_avg, std_res_avg$storage %in% c("RT", "BAG", "4C_BAG"))
+vacuum_rt <- subset(
+    std_res_avg, std_res_avg$storage %in% c("RT", "VACUUM", "4C_VACUUM"))
+
+```
+
+Then, a PCA plot for each subset is created, beginning with the **BAG** subset:
+
+```{r standards-pca-avg, echo = FALSE}
+pc <- prcomp(t(log2(assay(bags_rt, "normalized_filled_imputed"))),
+                 center = TRUE, scale. = FALSE)
+```
+
+```{r standards-pca-plot-avg, fig.path = IMAGE_PATH, fig.cap = "PCA of the samples based on intensities of known compounds.", fig.width = 7 * phi, fig.height = 7, echo = FALSE}
+par(mfrow = c(1, 2))
+plot_pca(pc, col = "#00000080",
+         bg = paste0(col_storage[as.character(std_res_avg$storage)], 90),
+         pc_x = 1, pc_y = 2, pch = 21)
+plot_pca(pc, col = "#00000080",
+         bg = paste0(col_storage[as.character(std_res_avg$storage)], 90),
+         pc_x = 3, pc_y = 4, pch = 21)
+legend("topleft", col = col_storage, legend = names(col_storage),
+       title = "storage method: BAG", pch = 16, ncol = 2)
+```
+
+We proceed with the **VACUUM** subset:
+
+```{r standards-pca-avg, echo = FALSE}
+pc <- prcomp(t(log2(assay(vacuum_rt, "normalized_filled_imputed"))),
+                 center = TRUE, scale. = FALSE)
+```
+
+```{r standards-pca-plot-avg, fig.path = IMAGE_PATH, fig.cap = "PCA of the samples based on intensities of known compounds.", fig.width = 7 * phi, fig.height = 7, echo = FALSE}
+par(mfrow = c(1, 2))
+plot_pca(pc, col = "#00000080",
+         bg = paste0(col_storage[as.character(std_res_avg$storage)], 90),
+         pc_x = 1, pc_y = 2, pch = 21)
+plot_pca(pc, col = "#00000080",
+         bg = paste0(col_storage[as.character(std_res_avg$storage)], 90),
+         pc_x = 3, pc_y = 4, pch = 21)
+legend("topleft", col = col_storage, legend = names(col_storage),
+       title = "storage method: VACUUM", pch = 16, ncol = 2)
+```
 
 # Session information
 
