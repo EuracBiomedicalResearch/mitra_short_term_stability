@@ -40,10 +40,10 @@ dir.create(RESULT_PATH, recursive = TRUE, showWarnings = FALSE)
 # Introduction
 
 In this document we perform the differential abundance analysis of the features
-from short term stability data collected with mitra tips, with the aim of 
-finding significant storage-related features. This task is performed by 
+from short term stability data collected with mitra tips, with the aim of
+finding significant storage-related features. This task is performed by
 hypothesis testing, where we try to identify which metabolites have the most
-different concentrations. 
+different concentrations.
 We follow an untargeted approach, the analysis comprises feature pre-filtering,
 exploratory analysis and differential abundance analysis.
 
@@ -53,10 +53,10 @@ exploratory analysis and differential abundance analysis.
 First, we load the required packages and the data, after preprocessing and
 normalization. The end result of these steps is a `SummarizedExperiment` that
 contains aligned data, where features are grouped (after correspondence), and
-that have undergone gap filling, normalization by the median, linear fitting and 
-per-feature between-batch normalization to remove any unwanted variability. 
-The `SummarizedExperiment` lets us store all the information regarding the 
-normalization steps in the form of `assays`, which we are still able to access 
+that have undergone gap filling, normalization by the median, linear fitting and
+per-feature between-batch normalization to remove any unwanted variability.
+The `SummarizedExperiment` lets us store all the information regarding the
+normalization steps in the form of `assays`, which we are still able to access
 to proceed with the analysis.
 
 ```{r load-data, echo = FALSE, warning = FALSE}
@@ -76,7 +76,7 @@ It is important now to remove the `QC` samples from the dataset, because the
 analysis has to be performed only on study samples; the `QC` samples, though
 are still required to evaluate the goodness of the detected features, therefore
 they will be stored in a separate `SummarizedExperiment` object that can be
-accessed when needed. 
+accessed when needed.
 
 We assign the colours as seen before.
 
@@ -152,7 +152,7 @@ is no technical variance in the observed measurements, whereas a D-ratio of
 100% represents only noise and no biological variance detected. A common cut-off
 for the D-ratio is 0.5, aiming at keeping features whose variation in study
 samples is twice as large as the one in QC samples
-[@broadhurstGuidelinesConsiderationsUse2018]. 
+[@broadhurstGuidelinesConsiderationsUse2018].
 
 For the present dataset calculate the D-ratio **separately** for each source
 (sample matrix) because the variance between sample matrices is expected to be
@@ -197,11 +197,11 @@ res <- res_neg[which(dratios < 0.5), ]
 ```
 
 This reduced the data set from `r length(dratios)` to `r nrow(res)` features.
-Next, we discard the features that have not been identified in at least one
-third of the samples in any of the sample groups.
+Next, we discard the features that have not been identified in at least half of
+the samples in any of the sample groups.
 
 ```{r filter-proportion}
-keep <- moreAreValidThan(assay(res, "raw"), f = res$storage, prop = 1/3)
+keep <- moreAreValidThan(assay(res, "raw"), f = res$storage_time, prop = 0.5)
 res <- res[keep, ]
 ```
 
@@ -227,16 +227,17 @@ plot_pca(pc, col = "#00000080",
 plot_pca(pc, col = "#00000080",
          bg = paste0(col_storage[as.character(res$storage)], 90),
          pc_x = 3, pc_y = 4, pch = 21)
-legend("topleft", col = col_storage, legend = names(col_storage),
+legend("bottomright", col = col_storage, legend = names(col_storage),
        title = "storage", pch = 16, ncol = 2)
 ```
 
+PC3 and 4 separate room temperature samples from all other samples.
 
 
 # Differential abundance analysis
 
 In this section, we perform a differential abundance analysis to identify
-features that have significantly different abundances between male and female 
+features that have significantly different abundances between male and female
 samples. The analysis is based on feature-wise multiple linear regression:
 the aim of such analysis is to find the relationship between the independent
 variables (age and sex) and the response variable (signal intensity).
@@ -263,9 +264,9 @@ model that best describes the data. The results are stored in a `MArrayLM`
 This model, though, is not enough to accept whether or not there is actually a
 relationship among the response and the independent variables, therefore we must
 perform a hypothesis test: we define the *null hypothesis* as there not being
-any differences in the abundances of metabolites between the different storage 
-methods. The *alternative hypothesis* is therefore defined when there are 
-differences in the intensities of the signals coming from the metabolites in 
+any differences in the abundances of metabolites between the different storage
+methods. The *alternative hypothesis* is therefore defined when there are
+differences in the intensities of the signals coming from the metabolites in
 the different experimental groups.
 To accept or reject the alternative hypothesis, it is necessary to calculate the
 p-value: the function that allows us to add the results to the `MArrayLM` object
@@ -425,7 +426,6 @@ averageSE <- function(x, column = character(), mainAssay = character()) {
                          colData = cd, metadata = metadata(x))
 }
 ## Average technical replicates:
-res$storage_time <- paste0(res$storage, "_", res$time)
 res_avg <- averageSE(res, column = "storage_time")
 ```
 
@@ -439,11 +439,11 @@ par(mfrow = c(1, 2))
 plot_pca(pc, col = "#00000080",
          bg = paste0(col_storage[as.character(res_avg$storage)], 90),
          pc_x = 1, pc_y = 2, pch = 21)
+legend("topright", col = col_storage, legend = names(col_storage),
+       title = "storage", pch = 16, ncol = 2)
 plot_pca(pc, col = "#00000080",
          bg = paste0(col_storage[as.character(res_avg$storage)], 90),
          pc_x = 3, pc_y = 4, pch = 21)
-legend("topleft", col = col_storage, legend = names(col_storage),
-       title = "storage", pch = 16, ncol = 2)
 ```
 
 
@@ -453,13 +453,15 @@ pchs <- 21:25
 names(pchs) <- c("RT", "BAG", "4C_BAG", "VACUUM", "4C_VACUUM")
 plot_pca(pc, col = "#00000080",
          bg = paste0(col_time[as.character(res_avg$time)], 90),
-         pc_x = 1, pc_y = 2, pch = pchs[res_avg$storage])
+         pc_x = 1, pc_y = 2, pch = pchs[as.character(res_avg$storage)])
+legend("topright", pch = pchs, legend = names(pchs),
+       title = "storage", ncol = 2)
 plot_pca(pc, col = "#00000080",
          bg = paste0(col_time[as.character(res_avg$time)], 90),
-         pc_x = 3, pc_y = 4, pch = pchs[res_avg$storage])
-legend("topleft", pch = pchs, legend = names(pchs),
-       title = "storage", ncol = 2)
+         pc_x = 3, pc_y = 4, pch = pchs[as.character(res_avg$storage)])
 ```
+
+PC1 seems to represent the time.
 
 At last we create also a heatmap of the coefficients.
 
@@ -479,4 +481,4 @@ pheatmap(coefs, show_colname = FALSE, annotation_col = anns, breaks = brks,
 
 ```{r}
 sessionInfo()
-``` 
+```

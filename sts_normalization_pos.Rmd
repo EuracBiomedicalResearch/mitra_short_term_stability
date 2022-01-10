@@ -159,22 +159,23 @@ registerDoParallel(ncores)
 register(DoparParam(), default = TRUE)
 library(CompMetaboTools)
 ## Define colors for the groups.
-col_storage <- brewer.pal(6, name = "Set1")
-names(col_storage) <- c("4C_BAG",   # red
-                        "RT",        # blue
-                        "BAG",       # green
-                        "VACUUM",    # purple
-                        "4C_VACUUM", # orange
-                        "QC")        # yellow
-col_time <- brewer.pal(8, name = "Set3")
-names(col_time) <- c("1d",
-                     "1w",
-                     "2d",
-                     "2h",
-                     "3d",
+col_storage <- brewer.pal(12, name = "Paired")[c(6, 2, 10, 1, 9, 7)]
+names(col_storage) <- c("RT",           # red
+                        "BAG",          # blue
+                        "VACUUM",       # purple
+                        "4C_BAG",       # light blue
+                        "4C_VACUUM",    # light purple
+                        "QC")           # light orange
+col_time <- brewer.pal(9, name = "OrRd")[c(3, 4, 5, 6, 7, 8, 9, 1)]
+names(col_time) <- c("2h",
                      "6h",
+                     "1d",
+                     "2d",
+                     "3d",
+                     "1w",
                      "2w",
                      "QC")
+
 load("data/RData/sts_preprocessing_pos/data_pos.RData")
 ```
 
@@ -343,12 +344,26 @@ signal distributions.
 res_pos$storage_time <- paste0(res_pos$storage, "_", res_pos$time)
 res_pos$storage_time[res_pos$storage_time == "QC_QC"] <- "QC"
 
+## Convert to a factor to enable them being properly ordered.
+res_pos$storage_time <- factor(
+    res_pos$storage_time, levels = c("RT_2h", "RT_6h", "RT_1d", "RT_2d",
+                                     "RT_3d", "RT_1w", "RT_2w", "BAG_6h",
+                                     "BAG_1d", "BAG_2d", "BAG_3d", "BAG_1w",
+                                     "BAG_2w", "VACUUM_6h", "VACUUM_1d",
+                                     "VACUUM_2d", "VACUUM_3d", "VACUUM_1w",
+                                     "VACUUM_2w", "4C_BAG_6h", "4C_BAG_1d",
+                                     "4C_BAG_2d", "4C_BAG_3d", "4C_BAG_1w",
+                                     "4C_BAG_2w", "4C_VACUUM_6h",
+                                     "4C_VACUUM_1d", "4C_VACUUM_2d",
+                                     "4C_VACUUM_3d", "4C_VACUUM_1w",
+                                     "4C_VACUUM_2w", "QC"))
+
 #' calculate average intensity across 3 replicates per condition
-cond_ints <- lapply(sort(unique(res_pos$storage_time)), function(z) {
+cond_ints <- lapply(levels(res_pos$storage_time), function(z) {
     rowMeans(log2(assay(res_pos, "raw_filled")[, res_pos$storage_time == z]),
              na.rm = TRUE)
 })
-names(cond_ints) <- sort(unique(res_pos$storage_time))
+names(cond_ints) <- levels(res_pos$storage_time)
 par(mar = c(8, 4.3, 1, 0.5))
 boxplot(cond_ints, las = 2)
 grid()
