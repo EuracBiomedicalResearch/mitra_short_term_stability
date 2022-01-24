@@ -536,6 +536,28 @@ beginning of storage duration, but after one and two weeks, those samples
 have the highest number of significant features when compared to the samples
 that were freezed directly after drying.
 
+We then calculated the percentage of the metabolome changing over storage time:
+
+```{r}
+tab_time <- tab
+tab_time$time <- factor(tab_time$time,
+                        levels = c("6h", "1d", "2d", "3d", "1w", "2w"))
+tab_time <- tab_time[order(as.integer(tab_time$time)), ]
+percentage <- tab_time$count/58*100
+x <- plot(tab_time$time, percentage, space = 
+            c(rep(0, 5), 0.2, rep(0, 4), 0.2,
+            rep(0, 4), 0.2, rep(0, 4), 0.2,
+            rep(0, 4), 0.2, rep(0, 4)),
+            col = col_storage[as.character(tab_time$storage)], 
+          ylab = "% of change",
+             main = "% of Metabolome changing during storage", xlab = "storage time")
+legend("topleft", pch = 22, col = "black", pt.bg = col_storage,
+       legend = names(col_storage))
+grid(nx = NA, ny = NULL)
+
+```
+
+
 In addition we create a PCA plot after averaging the replicates.
 
 ```{r average-replicates, echo = FALSE}
@@ -725,6 +747,7 @@ axis(side = 1, at = c(3, 8, 13, 18, 23, 28),
 There seems to be no clear systematic increase of the variance or decrease of
 absolute signal with time.
 
+
 # Reduced data sets
 
 Now, we split the data sets into two parts. The first contains all samples
@@ -776,6 +799,14 @@ plot_pca(pc, col = "#00000080",
 legend("topleft", col = col_storage, legend = names(col_storage),
        title = "storage method: VACUUM", pch = 16, ncol = 2)
 ```
+
+```{r export-to-excel}
+library(writexl)
+
+write_xlsx(as.data.frame(rowData(res_pos)), 
+           "mitra_short_term_stability_semi_pos.xlsx")
+```
+
 
 # Session information
 
