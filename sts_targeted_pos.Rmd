@@ -50,7 +50,7 @@ corresponding to lab-internal set of standards.
 
 # Data import
 
-First, we load the required packages and the data, after preprocessing and
+First, we load the required packages and the data, after pre-processing and
 normalization. The end result of these steps is a `SummarizedExperiment` that
 contains aligned data, where features are grouped (after correspondence), and
 that have undergone gap filling, normalization by the median, linear fitting and
@@ -71,7 +71,7 @@ library(pander)
 load("data/RData/sts_normalization_pos/res_pos.RData")
 ```
 
-It is important now to remove the `POOL` samples from the dataset, because the
+It is important now to remove the `POOL` samples from the data set, because the
 analysis has to be performed only on study samples; the `POOL` samples, though
 are still required to evaluate the goodness of the detected features, therefore
 they will be stored in a separate `SummarizedExperiment` object that can be
@@ -534,7 +534,7 @@ mtext(at = vapply(split(x, tab_time$time), mean, numeric(1)),
 Samples that were stored at room temperature show the least change in the
 beginning of storage duration, but after one and two weeks, those samples
 have the highest number of significant features when compared to the samples
-that were freezed directly after drying.
+that were frozen directly after drying.
 
 We then calculated the percentage of the metabolome changing over storage time:
 
@@ -545,7 +545,7 @@ x <- barplot(tab_time$percentage, space = c(rep(0, 5), 0.2, rep(0, 4), 0.2,
                                             rep(0, 4), 0.2, rep(0, 4), 0.2,
                                             rep(0, 4), 0.2, rep(0, 4)),
              col = col_storage[as.character(tab_time$storage)], ylab = "%",
-             main = "% of features being signifcant")
+             main = "% of features being significant")
 legend("topleft", pch = 22, col = "black", pt.bg = col_storage,
        legend = names(col_storage))
 grid(nx = NA, ny = NULL)
@@ -648,7 +648,7 @@ legend("topleft", col = col_storage, legend = names(col_storage),
        title = "storage", pch = 16, ncol = 2)
 ```
 
-In the PC1 plot, we see a separation of samples stored at room temperture (RT),
+In the PC1 plot, we see a separation of samples stored at room temperature (RT),
 samples that were stored under other circumstances cannot be distinguished from
 the PCA plots.
 
@@ -683,7 +683,7 @@ pheatmap(coefs, show_colname = FALSE, annotation_col = anns, breaks = brks,
 
 # Evaluation of variance between replicated measurements
 
-The rather suprising decrease of the number of significant metabolites for later
+The rather surprising decrease of the number of significant metabolites for later
 time points seen in the barplots above might eventually be caused by an
 increased variance at these time points which then affect the statistical
 test. To evaluate this we compare next the total number of feature with an
@@ -791,7 +791,7 @@ absolute signal with time.
 # Reduced data sets
 
 Now, we split the data sets into two parts. The first contains all samples
-that were stored at room temperature or in plastic bags filled with dessicants,
+that were stored at room temperature or in plastic bags filled with desiccants,
 the second contains all samples stored at rt or in vacuum bags.
 
 ```{r split-sets, echo = TRUE}
