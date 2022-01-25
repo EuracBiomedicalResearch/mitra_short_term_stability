@@ -477,6 +477,159 @@ pheatmap(coefs, show_colname = FALSE, annotation_col = anns, breaks = brks,
          annotation_colors = list(storage = col_storage, time = col_time))
 ```
 
+# Evaluation of variance between replicated measurements
+
+The rather suprising decrease of the number of significant metabolites for later
+time points seen in the barplots above might eventually be caused by an
+increased variance at these time points which then affect the statistical
+test. To evaluate this we compare next the total number of feature with an
+absolute coefficient larger than a certain cut-off and then also the variance
+between the 3 replicated measurements for each time points.
+
+The table below lists the number of features with an more than 2-fold (absolute)
+difference in abundance compared to the initial time point.
+
+```{r , echo = FALSE, results = "asis"}
+## Get the coefficients for all comparisons.
+tmp <- as.matrix(rowData(res)[, grep("coef", colnames(rowData(res)))])
+## Count the number of features with abs coef > 1
+tab_fc <- apply(abs(tmp), MARGIN = 2, function(z) sum(z > 1, na.rm = TRUE))
+tab_fc <- data.frame(comparison = sub("coef.", "", names(tab_fc)),
+                     count = tab_fc)
+tab_fc$storage <- c(rep("RT", 6), rep("BAG", 6), rep("VACUUM", 6),
+                    rep("4C_BAG", 6), rep("4C_VACUUM", 6))
+tab_fc$time <- rep(c("6h", "1d", "2d", "3d", "1w", "2w"), 5)
+rownames(tab_fc) <- NULL
+pandoc.table(tab_fc[, c("comparison", "storage", "time", "count")],
+             style = "rmarkdown",
+             caption = paste0("Number of features of the in",
+                              " total", nrow(res), "analyzed features ",
+                              "with a more that 2-fold difference in abundance"))
+```
+
+```{r fold-change-features-barplot, echo = FALSE, fig.path = IMAGE_PATH, fig.width = 10 * phi, fig.cap = "Amount of features with a more than two-fold difference in abundance per storage condition over time."}
+tab_time <- tab_fc
+tab_time$time <- factor(tab_time$time,
+                        levels = c("6h", "1d", "2d", "3d", "1w", "2w"))
+tab_time <- tab_time[order(as.integer(tab_time$time)), ]
+x <- barplot(tab_time$count, space = c(rep(0, 5), 0.2, rep(0, 4), 0.2,
+                                       rep(0, 4), 0.2, rep(0, 4), 0.2,
+                                       rep(0, 4), 0.2, rep(0, 4)),
+             col = col_storage[as.character(tab_time$storage)], ylab = "count",
+             main = "Number of significant features")
+legend("topleft", pch = 22, col = "black", pt.bg = col_storage,
+       legend = names(col_storage))
+grid(nx = NA, ny = NULL)
+mtext(at = vapply(split(x, tab_time$time), mean, numeric(1)),
+      text = levels(tab_time$time), side = 1, cex = par("cex.axis"),
+      line = 1.5)
+```
+
+We next evaluate the average abundance of the replicates as well as their
+standard deviation over time and condition.
+
+```{r}
+res$storage_time <- droplevels(res$storage_time)
+sds <- lapply(levels(res$storage_time), function(z) {
+    tmp <- res[, res$storage_time == z]
+    apply(log2(assay(tmp, "normalized_filled_imputed")),
+          MARGIN = 1, sd, na.rm = TRUE)
+})
+names(sds) <- levels(res$storage_time)
+## Mean abundance
+means <- lapply(levels(res$storage_time), function(z) {
+    tmp <- res[, res$storage_time == z]
+    apply(log2(assay(tmp, "normalized_filled_imputed")),
+          MARGIN = 1, mean, na.rm = TRUE)
+})
+names(means) <- levels(res$storage_time)
+## Median abundance
+medians <- lapply(levels(res$storage_time), function(z) {
+    tmp <- res[, res$storage_time == z]
+    apply(log2(assay(tmp, "normalized_filled_imputed")),
+          MARGIN = 1, median, na.rm = TRUE)
+})
+names(medians) <- levels(res$storage_time)
+```
+
+```{r sd-mean-features-boxplot, echo = FALSE, fig.path = IMAGE_PATH, fig.width = 5 * phi, fig.cap = "Distribution of average feature abundances and their standard deviation per time point/condition.", echo = FALSE}
+## Define ordering index (6h, 1d, 2d, ...).
+idx <- c(2, 8, 14, 20, 26,
+         3, 9, 15, 21, 27,
+         4, 10, 16, 22, 28,
+         5, 11, 17, 23, 29,
+         6, 12, 18, 24, 30,
+         7, 13, 19, 25, 31)
+par(mfrow = c(2, 1), mar = c(0, 4.5, 0, 0))
+boxplot(means[idx], xaxt = "n", xlab = "",
+        ylab = expression(log[2]~mean~abundance),
+        col = col_storage[rep(1:5, 6)])
+grid(nx = NA, ny = NULL)
+abline(v = c(5.5, 10.5, 15.5, 20.5, 25.5))
+par(mar = c(4.5, 4.5, 0, 0))
+boxplot(sds[idx], xaxt = "n", xlab = "",
+        ylab = expression(SD),
+        col = col_storage[rep(1:5, 6)])
+grid(nx = NA, ny = NULL)
+abline(v = c(5.5, 10.5, 15.5, 20.5, 25.5))
+axis(side = 1, at = c(3, 8, 13, 18, 23, 28),
+     labels = c("6h", "1d", "2d", "3d", "1w", "2w"))
+```
+
+There seems to be no clear systematic increase of the variance or decrease of
+absolute signal with time.
+
+# Reduced data sets
+
+Now, we split the data sets into two parts. The first contains all samples
+that were stored at room temperature or in plastic bags filled with dessicants,
+the second contains all samples stored at rt or in vacuum bags.
+
+```{r split-sets, echo = TRUE}
+bags_rt <- subset(
+    res_avg, res_avg$storage %in% c("RT", "BAG", "4C_BAG"))
+vacuum_rt <- subset(
+    res_avg, res_avg$storage %in% c("RT", "VACUUM", "4C_VACUUM"))
+```
+
+Then, a PCA plot for each subset is created, beginning with the **BAG** subset:
+
+```{r standards-pca-avg-bag, echo = FALSE}
+pc <- prcomp(t(log2(assay(bags_rt, "normalized_filled_imputed"))),
+                 center = TRUE, scale. = FALSE)
+```
+
+```{r standards-pca-plot-avg-bag, fig.path = IMAGE_PATH, fig.cap = "PCA of the samples based on intensities of known compounds.", fig.width = 7 * phi, fig.height = 7, echo = FALSE}
+par(mfrow = c(1, 2))
+plot_pca(pc, col = "#00000080",
+         bg = paste0(col_storage[as.character(res_avg$storage)], 90),
+         pc_x = 1, pc_y = 2, pch = 21)
+plot_pca(pc, col = "#00000080",
+         bg = paste0(col_storage[as.character(res_avg$storage)], 90),
+         pc_x = 3, pc_y = 4, pch = 21)
+legend("topleft", col = col_storage, legend = names(col_storage),
+       title = "storage method: BAG", pch = 16, ncol = 2)
+```
+
+We proceed with the **VACUUM** subset:
+
+```{r standards-pca-avg-vacuum, echo = FALSE}
+pc <- prcomp(t(log2(assay(vacuum_rt, "normalized_filled_imputed"))),
+                 center = TRUE, scale. = FALSE)
+```
+
+```{r standards-pca-plot-avg-vacuum, fig.path = IMAGE_PATH, fig.cap = "PCA of the samples based on intensities of known compounds.", fig.width = 7 * phi, fig.height = 7, echo = FALSE}
+par(mfrow = c(1, 2))
+plot_pca(pc, col = "#00000080",
+         bg = paste0(col_storage[as.character(res_avg$storage)], 90),
+         pc_x = 1, pc_y = 2, pch = 21)
+plot_pca(pc, col = "#00000080",
+         bg = paste0(col_storage[as.character(res_avg$storage)], 90),
+         pc_x = 3, pc_y = 4, pch = 21)
+legend("topleft", col = col_storage, legend = names(col_storage),
+       title = "storage method: VACUUM", pch = 16, ncol = 2)
+```
+
 # Session information
 
 ```{r}
