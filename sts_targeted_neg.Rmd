@@ -50,7 +50,7 @@ corresponding to lab-internal set of standards.
 
 # Data import
 
-First, we load the required packages and the data, after preprocessing and
+First, we load the required packages and the data, after pre-processing and
 normalization. The end result of these steps is a `SummarizedExperiment` that
 contains aligned data, where features are grouped (after correspondence), and
 that have undergone gap filling, normalization by the median, linear fitting and
@@ -71,7 +71,7 @@ library(pander)
 load("data/RData/sts_normalization_neg/res_neg.RData")
 ```
 
-It is important now to remove the `POOL` samples from the dataset, because the
+It is important now to remove the `POOL` samples from the data set, because the
 analysis has to be performed only on study samples; the `POOL` samples, though
 are still required to evaluate the goodness of the detected features, therefore
 they will be stored in a separate `SummarizedExperiment` object that can be
@@ -544,7 +544,73 @@ mtext(at = vapply(split(x, tab_time$time), mean, numeric(1)),
 Samples that were stored at room temperature show the least change in the
 beginning of storage duration, but after one and two weeks, those samples
 have the highest number of significant features when compared to the samples
-that were freezed directly after drying.
+that were frozen directly after drying.
+
+After one week we see a decrease in the amount of features that show a 
+difference in abundance compared to the amount seen on day 2 and day 3, which 
+is not expected. This trend was also seen in positive mode.
+
+We then calculated the percentage of the metabolome changing over storage time:
+
+```{r sig-features-barplot-perc, echo = FALSE, fig.path = IMAGE_PATH, fig.width = 10 * phi, fig.cap = "Percentage of significant features per storage condition over time"}
+col_storage <- col_storage[names(col_storage) != "QC"]
+tab_time$percentage <- tab_time$count / nrow(std_res) * 100
+x <- barplot(tab_time$percentage, space = c(rep(0, 5), 0.2, rep(0, 4), 0.2,
+                                            rep(0, 4), 0.2, rep(0, 4), 0.2,
+                                            rep(0, 4), 0.2, rep(0, 4)),
+             col = col_storage[as.character(tab_time$storage)], ylab = "%",
+             main = "% of features being significant")
+legend("topleft", pch = 22, col = "black", pt.bg = col_storage,
+       legend = names(col_storage))
+grid(nx = NA, ny = NULL)
+mtext(at = vapply(split(x, tab_time$time), mean, numeric(1)),
+      text = levels(tab_time$time), side = 1, cex = par("cex.axis"),
+      line = 1.5)
+```
+
+We plot the same information as lines instead of bar plots.
+
+```{r sig-features-lines, echo = FALSE, fig.path = IMAGE_PATH, fig.width = 10 * phi, fig.cap = "Amount of significant features per storage condition over time"}
+tab_time$days <- 0.25
+tab_time$days[tab_time$time == "1d"] <- 1
+tab_time$days[tab_time$time == "2d"] <- 2
+tab_time$days[tab_time$time == "3d"] <- 3
+tab_time$days[tab_time$time == "1w"] <- 7
+tab_time$days[tab_time$time == "2w"] <- 14
+
+tab_condition <- split(tab_time, tab_time$storage)
+plot(NA, NA, main = "Number of significant features", xlim = c(0, 14),
+     ylim = c(0, max(tab_time$count)), ylab = "count", xlab = "days")
+for (i in seq_along(tab_condition)) {
+    points(x = tab_condition[[i]]$days,
+           y = tab_condition[[i]]$count,
+           type = "b", pch = 21,
+           bg = paste0(col_storage[names(tab_condition)[i]], 40),
+           col = paste0(col_storage[names(tab_condition)[i]], 80))
+}
+grid()
+legend("bottomright", pch = 21, col = col_storage,
+       pt.bg = paste0(col_storage, 40),
+       legend = names(col_storage), bg = "white")
+```
+
+And the same plot using percentages instead of absolute counts.
+
+```{r sig-features-lines-perc, echo = FALSE, fig.path = IMAGE_PATH, fig.width = 10 * phi, fig.cap = "Percentage of significant features per storage condition over time"}
+plot(NA, NA, main = "Percentage of significant features", xlim = c(0, 14),
+     ylim = c(0, max(tab_time$percentage)), ylab = "%", xlab = "days")
+for (i in seq_along(tab_condition)) {
+    points(x = tab_condition[[i]]$days,
+           y = tab_condition[[i]]$percentage,
+           type = "b", pch = 21,
+           bg = paste0(col_storage[names(tab_condition)[i]], 40),
+           col = paste0(col_storage[names(tab_condition)[i]], 80))
+}
+grid()
+legend("bottomright", pch = 21, col = col_storage,
+       pt.bg = paste0(col_storage, 40),
+       legend = names(col_storage), bg = "white")
+```
 
 In addition we create a PCA plot after averaging the replicates.
 
@@ -596,7 +662,7 @@ legend("topleft", col = col_storage, legend = names(col_storage),
        title = "storage", pch = 16, ncol = 2)
 ```
 
-In the PC1 plot, we see a separation of samples stored at room temperture (RT),
+In the PC1 plot, we see a separation of samples stored at room temperature (RT),
 samples that were stored under other circumstances cannot be distinguished from
 the PCA plots.
 
@@ -630,8 +696,8 @@ pheatmap(coefs, show_colname = FALSE, annotation_col = anns, breaks = brks,
 
 # Evaluation of variance between replicated measurements
 
-The rather suprising decrease of the number of significant metabolites for later
-time points seen in the barplots above might eventually be caused by an
+The rather surprising decrease of the number of significant metabolites for
+later time points seen in the barplots above might eventually be caused by an
 increased variance at these time points which then affect the statistical
 test. To evaluate this we compare next the total number of feature with an
 absolute coefficient larger than a certain cut-off and then also the variance
@@ -737,7 +803,7 @@ absolute signal with time.
 # Reduced data sets
 
 Now, we split the data sets into two parts. The first contains all samples
-that were stored at room temperature or in plastic bags filled with dessicants,
+that were stored at room temperature or in plastic bags filled with desiccants,
 the second contains all samples stored at rt or in vacuum bags.
 
 ```{r split-sets, echo = TRUE}
@@ -784,6 +850,13 @@ plot_pca(pc, col = "#00000080",
          pc_x = 3, pc_y = 4, pch = 21)
 legend("topleft", col = col_storage, legend = names(col_storage),
        title = "storage method: VACUUM", pch = 16, ncol = 2)
+```
+
+```{r export-to-excel}
+library(writexl)
+
+write_xlsx(as.data.frame(rowData(res_neg)),
+           "mitra_short_term_stability_semi_neg.xlsx")
 ```
 
 # Session information
