@@ -43,7 +43,7 @@ RDATA_PATH <- paste0("data/RData/", filename, "/")
 if (!file.exists(RDATA_PATH)) dir.create(RDATA_PATH, recursive = TRUE)
 #' Define the path where we can find the mzML files:
 MZML_PATH <- "C:/Users/User/Documents/sts_mzML_neg"
-#MZML_PATH <- "/data/massspec/mzML/2017/2017_08/"
+MZML_PATH <- "/data/massspec/mzML/2017/2017_08/"
 if (!file.exists(MZML_PATH))
     stop("Can not find the directory with the mzML files: ", MZML_PATH)
 #' Where to cut the chromatogram (i.e. subset to spectra within rt 0-rt_cut)
@@ -113,7 +113,7 @@ da <- 0.01
 RTd <- 30
 ## Use socket based parallel processing on Windows systems
 if (.Platform$OS.type == "unix") {
-    register(bpstart(MulticoreParam(ncores)))
+    register(MulticoreParam(ncores))
 } else {
     register(bpstart(SnowParam(ncores)))
 }

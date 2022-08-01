@@ -85,22 +85,20 @@ res_qc <- res_neg[, res_neg$storage == "QC"]
 res_neg <- res_neg[, res_neg$storage != "QC"]
 res_neg$storage <- factor(as.character(res_neg$storage))
 ## Define colors for the groups.
-col_storage <- brewer.pal(12, name = "Paired")[c(6, 2, 10, 1, 9, 7)]
+col_storage <- brewer.pal(12, name = "Paired")[c(6, 2, 10, 1, 9)]
 names(col_storage) <- c("RT",           # red
                         "BAG",          # blue
                         "VACUUM",       # purple
                         "4C_BAG",       # light blue
-                        "4C_VACUUM",    # light purple
-                        "QC")           # light orange
-col_time <- brewer.pal(9, name = "OrRd")[c(3, 4, 5, 6, 7, 8, 9, 1)]
+                        "4C_VACUUM")
+col_time <- brewer.pal(9, name = "OrRd")[c(1, 3, 5, 6, 7, 8, 9)]
 names(col_time) <- c("2h",
                      "6h",
                      "1d",
                      "2d",
                      "3d",
                      "1w",
-                     "2w",
-                     "QC")
+                     "2w")
 ## Setting golden ratio to save images
 phi <- (1+sqrt(5))/2
 ```
@@ -232,6 +230,27 @@ legend("bottomright", col = col_storage, legend = names(col_storage),
 ```
 
 PC3 and 4 separate room temperature samples from all other samples.
+
+```{r, echo = FALSE}
+png(paste0(IMAGE_PATH, "FIG-1-PCA-untargeted-neg.png"), width = 12, height = 6,
+    units = "cm", res = 600, pointsize = 5)
+par(mfrow = c(1, 2), mar = c(4.3, 4.5, 0.5, 0.5), cex.lab = 1.5, cex.axis = 1.5)
+plot_pca(pc, col = "#00000080",
+         bg = paste0(col_storage[as.character(res$storage)], "ce"),
+         pc_x = 1, pc_y = 2, pch = 21, ylim = c(-200, 330), cex = 1.5)
+legend("top", horiz = FALSE, legend = names(col_storage),
+       pt.bg = col_storage, pch = 21, ncol = 3, col = "#00000080", cex = 1.1)
+pchs <- rep(21, 5)
+names(pchs) <- c("RT", "BAG", "4C_BAG", "VACUUM", "4C_VACUUM")
+plot_pca(pc, col = "#00000080",
+         bg = paste0(col_time[as.character(res$time)], "ce"),
+         pc_x = 1, pc_y = 2, pch = pchs[as.character(res$storage)],
+         ylim = c(-220, 330), cex = 1.5)
+legend("top", horiz = TRUE, legend = names(col_time),
+       pt.bg = col_time, pch = 21, cex = 1.1, col = "#00000080")
+dev.off()
+
+```
 
 
 # Differential abundance analysis
@@ -389,7 +408,7 @@ mtext(at = vapply(split(x, tab_time$time), mean, numeric(1)),
 ```
 
 Like already observed in positive mode,  the samples stored at room temperature
-show the smallest changes in feature abundance at nearly all time points 
+show the smallest changes in feature abundance at nearly all time points
 measured in negative mode, too. Also, the amount of features with a significant
 difference in abundance drops after one week as seen in positive mode.
 
@@ -454,6 +473,31 @@ legend("bottomright", pch = 21, col = col_storage,
        pt.bg = paste0(col_storage, 40),
        legend = names(col_storage), bg = "white")
 ```
+
+```{r, echo = FALSE}
+
+png(paste0(IMAGE_PATH, "FIG-1-perc-untargeted-neg.png"), width = 8,
+    height = 4, units = "cm", res = 600, pointsize = 5)
+par(mar = c(4.3, 4.5, 1.5, 0.5), cex.axis = 1.5, cex.lab = 1.5)
+plot(NA, NA, main = "Percentage of significant features", xlim = c(0, 14),
+     ylim = c(0, max(tab_time$percentage)), ylab = "%", xlab = "days")
+for (i in seq_along(tab_condition)) {
+    points(x = tab_condition[[i]]$days,
+           y = tab_condition[[i]]$percentage,
+           type = "b", pch = 21,
+           bg = paste0(col_storage[names(tab_condition)[i]], 80),
+           col = paste0(col_storage[names(tab_condition)[i]], "ce"),
+           cex = 1.4)
+}
+grid()
+legend("bottomright", pch = 21, col = col_storage,
+       pt.bg = paste0(col_storage, 40),
+       legend = names(col_storage), bg = "white")
+
+dev.off()
+
+```
+
 
 In addition, we create a PCA plot after averaging the replicates.
 
@@ -521,6 +565,28 @@ plot_pca(pc, col = "#00000080",
 ```
 
 PC1 seems to represent the time.
+
+```{r, echo = FALSE}
+
+png(paste0(IMAGE_PATH, "FIG-1-PCA-avg-untargeted-neg.png"), width = 12,
+    height = 6, units = "cm", res = 600, pointsize = 5)
+par(mfrow = c(1, 2), mar = c(4.3, 4.5, 0.5, 0.5), cex.lab = 1.5, cex.axis = 1.5)
+plot_pca(pc, col = "#00000080",
+         bg = paste0(col_storage[as.character(res_avg$storage)], "ce"),
+         pc_x = 1, pc_y = 2, pch = 21, ylim = c(-200, 240), cex = 1.5)
+legend("top", horiz = FALSE, legend = names(col_storage), cex = 1.1,
+       pt.bg = col_storage, pch = 21, ncol = 3, col = "#00000080")
+pchs <- rep(21, 5)
+names(pchs) <- c("RT", "BAG", "4C_BAG", "VACUUM", "4C_VACUUM")
+plot_pca(pc, col = "#00000080",
+         bg = paste0(col_time[as.character(res_avg$time)], "ce"),
+         pc_x = 1, pc_y = 2, pch = pchs[as.character(res_avg$storage)],
+         ylim = c(-200, 240), cex = 1.5)
+legend("top", horiz = TRUE, legend = names(col_time), cex = 1.1,
+       pt.bg = col_time, pch = 21, col = "#00000080")
+dev.off()
+
+```
 
 At last we create also a heatmap of the coefficients.
 
