@@ -179,6 +179,7 @@ also to the features defined above.
 
 ```{r extract-as-se}
 res_neg <- quantify(data_neg, method = "sum", filled = FALSE)
+colData(res_neg)$time_stamp <- as.character(colData(res_neg)$time_stamp)
 ```
 
 # Gap filling and imputation of missing values
@@ -475,17 +476,17 @@ for (i in seq_len(nrow(is_chrs))) {
 is_data <- filterMatches(
     is_data,
     queryValue = c("FT00069",
-                   "FT00758",
-                   "FT00309",
-                   "FT01589",
-                   "FT00418",
-                   "FT00528",
-                   "FT00428",
-                   "FT00434",
-                   "FT00653",
+                   "FT00757",
+                   "FT00308",
+                   "FT01588",
+                   "FT00417",
+                   "FT00527",
+                   "FT00427",
+                   "FT00433",
+                   "FT00652",
                    "FT00102",
                    "FT00169",
-                   "FT00847",
+                   "FT00846",
                    "FT00167"),
     targetValue = c("L-Alanine (13C3, 99%; 15N, 99%)",
                     "L-Arginine HCl (13C6, 99%; 15N4, 99%)",

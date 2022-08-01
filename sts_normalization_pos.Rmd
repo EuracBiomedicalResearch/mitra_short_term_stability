@@ -184,6 +184,7 @@ also to the features defined above.
 
 ```{r extract-as-se}
 res_pos <- quantify(data_pos, method = "sum", filled = FALSE)
+colData(res_pos)$time_stamp <- as.character(colData(res_pos)$time_stamp)
 ```
 
 # Gap filling and imputation of missing values
@@ -479,7 +480,7 @@ for (i in seq_len(nrow(is_chrs))) {
 }
 
 is_data <- filterMatches(is_data,
-                         queryValue = c("FT00393", "FT00393", "FT00392"),
+                         queryValue = c("FT00394", "FT00394", "FT00395"),
                          targetValue = c("L-Isoleucine (13C6, 99%; 15N, 99%)",
                                          "L-Leucine (13C6, 99%; 15N, 99%)",
                                          "L-Leucine (13C6, 99%; 15N, 99%)"),
