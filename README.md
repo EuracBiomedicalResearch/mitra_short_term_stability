@@ -1,5 +1,9 @@
 # Short-term stability of Neoteryx Mitra blood microsamples
 
+This repository contains the documents defining and describing the analysis
+performed in this publication [Volani et al. DOI:
+10.3390/metabo13020146](https://doi.org/10.3390/metabo13020146).
+
 In this project the short-term stability of Neoteryx Mitra blood microsamples is
 evaluated using an untargeted metabolomics setup for polar metabolites. The
 impact of different storage conditions on metabolite concentrations is
